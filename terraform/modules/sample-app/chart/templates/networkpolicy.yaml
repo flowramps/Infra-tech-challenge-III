@@ -1,0 +1,57 @@
+# Default deny: a pod only receives traffic explicitly allowed below.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  labels:
+    {{- include "sample-app.labels" (dict "root" $) | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+---
+# Prometheus scrapes the application (9464) and Envoy (15090) metrics.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-metrics-scraping
+  labels:
+    {{- include "sample-app.labels" (dict "root" $) | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.network.monitoringNamespace }}
+      ports:
+        - port: 9464
+        - port: 15090
+{{- range .Values.services }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-{{ .name }}
+  labels:
+    {{- include "sample-app.labels" (dict "root" $) | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ .name }}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        {{- range .allowedCallers }}
+        - podSelector:
+            matchLabels:
+              app: {{ . }}
+        {{- end }}
+        {{- if .allowIngressGateway }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $.Values.network.ingressNamespace }}
+        {{- end }}
+      ports:
+        - port: 8080
+{{- end }}

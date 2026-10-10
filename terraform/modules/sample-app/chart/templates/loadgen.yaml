@@ -1,0 +1,42 @@
+{{- if .Values.loadgen.enabled }}
+# Constant synthetic traffic so dashboards, SLOs and traces always have data.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgen
+  labels:
+    {{- include "sample-app.labels" (dict "root" $) | nindent 4 }}
+    app: loadgen
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loadgen
+  template:
+    metadata:
+      labels:
+        app: loadgen
+        app.kubernetes.io/name: loadgen
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: loadgen
+          image: {{ .Values.loadgen.image }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              while true; do
+                curl -s -o /dev/null -w "%{http_code}\n" --max-time 5 http://frontend:8080/
+                sleep {{ .Values.loadgen.intervalSeconds }}
+              done
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 100
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+{{- end }}

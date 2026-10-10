@@ -1,0 +1,6 @@
+apiVersion: v2
+name: sample-app
+description: Three instrumented services (frontend -> orders -> inventory) running in the Istio mesh.
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

@@ -1,0 +1,74 @@
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: sample-app
+  labels:
+    {{- include "sample-app.labels" (dict "root" $) | nindent 4 }}
+spec:
+  selector:
+    {{- toYaml .Values.gateway.selector | nindent 4 }}
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts: ["*"]
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: frontend-ingress
+  labels:
+    {{- include "sample-app.labels" (dict "root" $) | nindent 4 }}
+spec:
+  hosts: ["*"]
+  gateways: [sample-app]
+  http:
+    - route:
+        - destination:
+            host: frontend
+            port:
+              number: 8080
+{{- range $svc := .Values.services }}
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: {{ $svc.name }}
+  labels:
+    {{- include "sample-app.labels" (dict "root" $) | nindent 4 }}
+spec:
+  host: {{ $svc.name }}
+  trafficPolicy:
+    {{- toYaml $.Values.trafficPolicy | nindent 4 }}
+  subsets:
+    {{- range $svc.versions }}
+    - name: {{ .name }}
+      labels:
+        version: {{ .name }}
+    {{- end }}
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: {{ $svc.name }}
+  labels:
+    {{- include "sample-app.labels" (dict "root" $) | nindent 4 }}
+spec:
+  hosts: [{{ $svc.name }}]
+  http:
+    - timeout: 5s
+      {{- with $svc.retries }}
+      retries:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      route:
+        {{- range $v := $svc.versions }}
+        - destination:
+            host: {{ $svc.name }}
+            subset: {{ $v.name }}
+          {{- if gt (len $svc.versions) 1 }}
+          weight: {{ ternary (int $.Values.canaryWeight) (sub 100 (int $.Values.canaryWeight)) (default false $v.canary) }}
+          {{- end }}
+        {{- end }}
+{{- end }}

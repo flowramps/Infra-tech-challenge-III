@@ -1,0 +1,81 @@
+{{- $ns := .Release.Namespace -}}
+{{- $errorBudget := printf "(1 - %v)" .Values.slo.availability -}}
+{{- $latencyBudget := printf "(1 - %v)" .Values.slo.latency -}}
+# SLIs per service and multi-window, multi-burn-rate alerts
+# (Google SRE Workbook, chapter 5). With a 30 day window, a 14.4x burn rate
+# consumes 2% of the error budget in 1 hour; 6x consumes 5% in 6 hours.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: sample-app-slo
+  labels:
+    {{- include "sample-app.labels" (dict "root" $) | nindent 4 }}
+spec:
+  groups:
+    - name: sample-app-sli
+      interval: 30s
+      rules:
+        {{- range list "5m" "30m" "1h" "6h" "1d" "3d" }}
+        - record: app:sli_errors:ratio_rate{{ . }}
+          expr: |
+            sum by (app) (rate(http_server_requests_total{namespace="{{ $ns }}", code=~"5.."}[{{ . }}]))
+            /
+            sum by (app) (rate(http_server_requests_total{namespace="{{ $ns }}"}[{{ . }}]))
+        - record: app:sli_slow_requests:ratio_rate{{ . }}
+          expr: |
+            1 - (
+              sum by (app) (rate(http_server_request_duration_seconds_bucket{namespace="{{ $ns }}", le="{{ $.Values.slo.latencyThreshold }}"}[{{ . }}]))
+              /
+              sum by (app) (rate(http_server_request_duration_seconds_count{namespace="{{ $ns }}"}[{{ . }}]))
+            )
+        {{- end }}
+    - name: sample-app-slo-alerts
+      rules:
+        - alert: AvailabilitySLOFastBurn
+          expr: |
+            app:sli_errors:ratio_rate1h > (14.4 * {{ $errorBudget }})
+            and
+            app:sli_errors:ratio_rate5m > (14.4 * {{ $errorBudget }})
+          for: 2m
+          labels:
+            severity: critical
+            slo: availability
+          annotations:
+            summary: "{{ "{{ $labels.app }}" }} is burning its availability error budget fast"
+            description: "Error ratio is above 14.4x the budget of the {{ mulf .Values.slo.availability 100 }}% SLO. At this pace the monthly budget is gone in about 2 days."
+        - alert: AvailabilitySLOSlowBurn
+          expr: |
+            app:sli_errors:ratio_rate6h > (6 * {{ $errorBudget }})
+            and
+            app:sli_errors:ratio_rate30m > (6 * {{ $errorBudget }})
+          for: 15m
+          labels:
+            severity: warning
+            slo: availability
+          annotations:
+            summary: "{{ "{{ $labels.app }}" }} is burning its availability error budget"
+            description: "Error ratio is above 6x the budget of the {{ mulf .Values.slo.availability 100 }}% SLO over the last 6 hours."
+        - alert: LatencySLOFastBurn
+          expr: |
+            app:sli_slow_requests:ratio_rate1h > (14.4 * {{ $latencyBudget }})
+            and
+            app:sli_slow_requests:ratio_rate5m > (14.4 * {{ $latencyBudget }})
+          for: 2m
+          labels:
+            severity: critical
+            slo: latency
+          annotations:
+            summary: "{{ "{{ $labels.app }}" }} is burning its latency error budget fast"
+            description: "Too many requests are slower than {{ .Values.slo.latencyThreshold }}s."
+        - alert: LatencySLOSlowBurn
+          expr: |
+            app:sli_slow_requests:ratio_rate6h > (6 * {{ $latencyBudget }})
+            and
+            app:sli_slow_requests:ratio_rate30m > (6 * {{ $latencyBudget }})
+          for: 15m
+          labels:
+            severity: warning
+            slo: latency
+          annotations:
+            summary: "{{ "{{ $labels.app }}" }} is burning its latency error budget"
+            description: "Too many requests are slower than {{ .Values.slo.latencyThreshold }}s over the last 6 hours."

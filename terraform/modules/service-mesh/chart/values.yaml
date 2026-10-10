@@ -1,0 +1,7 @@
+tracing:
+  # Name of the extension provider declared in istiod meshConfig.
+  provider: tempo
+  samplingPercentage: 100
+
+mtls:
+  mode: STRICT

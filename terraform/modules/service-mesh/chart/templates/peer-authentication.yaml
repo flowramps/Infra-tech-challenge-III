@@ -1,0 +1,10 @@
+# Applied to the root namespace, so every workload in the mesh only accepts
+# mutual TLS traffic.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: {{ .Release.Namespace }}
+spec:
+  mtls:
+    mode: {{ .Values.mtls.mode }}

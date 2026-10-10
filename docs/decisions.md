@@ -64,7 +64,7 @@ cluster ──► observability ──► service_mesh ──► sample_app
 Uma imagem, três serviços (`frontend → orders → inventory`), papel definido por variáveis de ambiente. Simplifica o build sem perder o que importa: chamadas encadeadas reais, propagação de contexto W3C, latência e falhas configuráveis.
 
 - Instrumentação explícita (OpenTelemetry SDK + prometheus_client) em vez de auto-instrumentação, para ficar claro de onde vem cada sinal.
-- A tag da imagem é o hash do código: mudou o código, muda a tag e o Deployment faz rolling update.
+- A tag da imagem é o SHA do commit que a gerou (imutável e rastreável). Ela é publicada pelo `cd.yml` e entregue pelo Argo CD (seção 11).
 - `inventory` falha 2% das requisições de propósito, o que alimenta SLOs, retries e circuit breaker com dados reais.
 - Um `loadgen` gera tráfego constante, para que os dashboards nunca fiquem vazios.
 
@@ -102,3 +102,34 @@ Uma imagem, três serviços (`frontend → orders → inventory`), papel definid
 ## 10. Custo
 
 O dashboard "Cluster Health & Cost" estima custo mensal a partir dos **requests** dos pods em execução (o que se paga numa cloud), por namespace, com preço por vCPU-hora e GiB-hora configurável. Também mostra o **custo ocioso** (requested − used) e a eficiência de CPU/memória, que são os alvos de right-sizing. Para custo real em cloud: OpenCost/Kubecost com preços da API do provedor.
+
+## 11. Entrega por GitOps (Argo CD)
+
+**Contexto.** Automatizar a entrega da aplicação com uma esteira segura, num cluster que não é alcançável a partir da internet.
+
+**Decisão.** Modelo pull com Argo CD (chart oficial `argo/argo-cd`) e a `Application` declarada pelo Terraform (chart `argo/argocd-apps`).
+
+- **Pull em vez de push.** O GitHub Actions não alcança um cluster local ou privado, e abrir o API server para a esteira seria o maior risco do desenho. A esteira publica a imagem e grava a nova tag no Git; o Argo CD puxa.
+- **Fronteira.** Terraform gerencia a plataforma e os parâmetros de ambiente (canary, taxa de falha, endpoints), passados via `helm.valuesObject` da `Application`. O Git gerencia a versão da aplicação (`image.tag`). Por isso `make chaos` continua funcionando: ele muda o estado desejado, e o self-heal não o desfaz.
+- **Helm, não Kustomize.** A aplicação já era um chart e o Argo CD renderiza Helm nativamente. O bump é um `yq` em `image.tag`.
+- **Menor privilégio no Argo CD.** O `AppProject` só aceita este repositório, só o namespace `sample-app` e nenhum recurso cluster-scoped.
+- **Bump por commit do bot** em vez do Argo CD Image Updater: um componente a menos, e cada deploy vira um commit auditável.
+
+**Trade-offs.** O `make up` passa a depender do GitHub e do GHCR. Sem webhook de entrada, o Argo CD faz polling a cada 60 s. Os commits de deploy aparecem como `github-actions[bot]`.
+
+## 12. Esteira de segurança
+
+Três perguntas, três comportamentos:
+
+| Pergunta | Ferramenta | Comportamento |
+|----------|------------|---------------|
+| Vazou algum segredo? | gitleaks, histórico completo | **Bloqueia**: segredo vazado é sempre acionável, e removê-lo depois não o revoga |
+| A infraestrutura tem má configuração? | Trivy config (Terraform, Helm, Dockerfile) | Reporta na aba Security. O primeiro scan apontou `KSV118` (pods sem `securityContext` no nível do pod), que foi corrigido em vez de ignorado |
+| A imagem tem CVE? | Trivy image | Reporta no PR e **semanalmente**; o `cd.yml` **bloqueia** CRITICAL com correção publicada. O primeiro scan encontrou 3 CVEs HIGH no `starlette`, corrigidas com upgrade |
+
+- **Scan semanal:** uma imagem que não muda fica vulnerável sozinha, porque CVEs novos são publicados contra dependências que já estão nela.
+- **Aceite de risco explícito:** `.trivyignore` exige justificativa e data de revisão para cada exceção.
+- **Supply chain:**
+  - actions de terceiros fixadas por SHA (uma tag pode ser reescrita; um SHA, não);
+  - runner fixado em `ubuntu-24.04`;
+  - imagem com atestado de proveniência SLSA assinado sem chave (OIDC), verificável com `gh attestation verify`.

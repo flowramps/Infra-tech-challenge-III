@@ -1,6 +1,6 @@
 # Infra Tech Challenge III: Kubernetes & Observability
 
-Cluster Kubernetes local (kind, 1 control plane + 2 workers) com stack completa de observabilidade (Prometheus, Loki, Tempo, Grafana), service mesh (Istio) e uma aplicação de 3 microsserviços instrumentada. Tudo é provisionado por Terraform, com **um comando**.
+Cluster Kubernetes local (kind, 1 control plane + 2 workers) com stack completa de observabilidade (Prometheus, Loki, Tempo, Grafana), service mesh (Istio) e uma aplicação de 3 microsserviços instrumentada. A plataforma é provisionada por Terraform, com **um comando**; a aplicação é entregue por **GitOps (Argo CD)** a partir de uma esteira com gates de segurança.
 
 ```bash
 make up
@@ -12,6 +12,7 @@ make up
 - [Pré-requisitos](#pré-requisitos)
 - [Como usar](#como-usar)
 - [O que foi entregue](#o-que-foi-entregue)
+- [Esteira CI/CD e GitOps](#esteira-cicd-e-gitops)
 - [Tour pela observabilidade](#tour-pela-observabilidade)
 - [Estrutura do repositório](#estrutura-do-repositório)
 - [Decisões e trade-offs](docs/decisions.md)
@@ -64,8 +65,12 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    s3[(S3 state)] -.-> cluster[module.cluster<br/>kind] --> obs[module.observability] --> mesh[module.service_mesh] --> appm[module.sample_app]
+    s3[(S3 state)] -.-> cluster[module.cluster<br/>kind] --> obs[module.observability]
+    obs --> mesh[module.service_mesh] --> appm[module.sample_app<br/>Argo CD Application]
+    obs --> gitops[module.gitops<br/>Argo CD] --> appm
 ```
+
+Terraform é dono da **plataforma** (cluster, observabilidade, mesh, Argo CD) e dos **parâmetros de ambiente** da aplicação. O Argo CD é dono da **entrega** da aplicação.
 
 ## Pré-requisitos
 
@@ -90,7 +95,8 @@ sudo sysctl -w fs.inotify.max_user_watches=524288 fs.inotify.max_user_instances=
 ```bash
 make up        # state backend + cluster + observabilidade + mesh + app (~10 min)
 make verify    # testes end-to-end de toda a plataforma
-make info      # URLs e senha do Grafana
+make info      # URLs e senhas (Grafana e Argo CD)
+make argocd    # UI do Argo CD em http://localhost:8443
 make down      # destrói o cluster (mantém o state)
 make clean     # remove o backend de state
 make help      # todos os comandos
@@ -113,6 +119,8 @@ make help      # todos os comandos
 
 Os ambientes ficam em `terraform/environments/<env>/` (tfvars + backend). Para outro ambiente: `make up ENV=<env>`.
 
+O Argo CD acompanha a **branch em que você está** (`GITOPS_REVISION`, padrão `git rev-parse --abbrev-ref HEAD`). A branch precisa existir no GitHub.
+
 ### Exemplo de saída do `make verify`
 
 ```
@@ -123,6 +131,9 @@ Cluster
 Application
   PASS Ingress gateway -> frontend -> orders -> inventory
   PASS HPAs are reading CPU metrics
+GitOps
+  PASS Argo CD application Synced and Healthy
+  PASS Workloads run the image published by the CD pipeline
 Metrics
   PASS Application metrics scraped
   PASS Envoy (Istio) metrics scraped
@@ -181,11 +192,51 @@ Security
 | Tráfego | canary 90/10 (orders v1/v2), retries, timeouts, circuit breaker (connection pool + outlier detection) |
 | Traces do mesh | Envoy → Tempo via Telemetry API (OpenTelemetry) |
 | Dashboards do mesh | taxa de sucesso, latência, fluxo origem → destino, split do canary, response flags |
-| CI | GitHub Actions: `terraform fmt/validate`, `helm lint`, build da imagem |
+| GitOps | Argo CD (pull), `AppProject` restrito ao repositório e ao namespace, auto-sync com prune e self-heal |
+| Esteira de segurança | gitleaks (histórico completo), Trivy IaC e imagem com SARIF na aba Security, scan semanal, gate de release |
+| Supply chain | actions de terceiros fixadas por SHA, atestado de proveniência (SLSA) assinado da imagem |
+| CI | `terraform fmt/validate`, `helm lint`, build + smoke test da imagem |
+
+## Esteira CI/CD e GitOps
+
+```mermaid
+flowchart LR
+    dev([git push / PR]) --> ci[ci.yml<br/>fmt, validate, lint<br/>build + smoke test]
+    dev --> sec[security.yml<br/>gitleaks, Trivy IaC,<br/>Trivy imagem]
+    cron([toda segunda 06:00]) --> sec
+    merge([merge em main<br/>alterando app/]) --> cd
+
+    subgraph cd[cd.yml]
+        b[build] --> gate{Trivy:<br/>CRITICAL com fix?}
+        gate -->|não| push[push GHCR<br/>tag = SHA] --> att[atestado de<br/>proveniência] --> bump[commit: image.tag]
+        gate -->|sim| stop([release bloqueado])
+    end
+
+    bump --> git[(GitHub)]
+    argo[Argo CD<br/>no cluster] -->|pull a cada 60s| git
+    argo -->|sync| k8s[sample-app]
+```
+
+| Workflow | Quando roda | Bloqueia? | Por quê |
+|----------|-------------|-----------|---------|
+| `ci.yml` | push em `main` e PR | sim | O código está correto e a imagem sobe |
+| `security.yml` · gitleaks | push em `main`, PR, semanal | **sim** | Credencial vazada é sempre acionável; o histórico inteiro é varrido porque apagar o segredo depois não o revoga |
+| `security.yml` · Trivy IaC/imagem | push em `main`, PR, semanal | não (reporta) | Imagens base trazem CVEs sem correção publicada; os achados vão para a aba Security para triagem. O scan semanal pega CVEs novos em imagens que não mudaram |
+| `cd.yml` | merge em `main` alterando `app/` | **sim** (CRITICAL com correção) | Nenhuma vulnerabilidade crítica corrigível chega ao registry |
+
+Por que **pull** e não push: o GitHub Actions não alcança um cluster local ou privado. A esteira só publica artefatos e registra a nova versão no Git; o Argo CD, de dentro do cluster, puxa a mudança. Nenhuma credencial do cluster sai dele.
+
+Na prática:
+- **Self-heal**: uma alteração manual (por exemplo, apagar a NetworkPolicy default-deny) é desfeita pelo Argo CD em cerca de 10 s.
+- **Rastreabilidade**: cada deploy é um commit `deploy(sample-app): <sha>`, e a imagem tem atestado verificável:
+  ```bash
+  gh attestation verify oci://ghcr.io/flowramps/infra-tech-challenge-iii/sample-app:<tag> -R flowramps/Infra-tech-challenge-III
+  ```
+- **Loop impossível**: commits feitos com `GITHUB_TOKEN` não disparam novos workflows.
 
 ## Tour pela observabilidade
 
-Depois do `make up`, abra o Grafana. A pasta **Tech Challenge** tem três dashboards:
+Depois do `make up`, abra o Grafana. A pasta **Tech Challenge** tem quatro dashboards:
 
 1. **Sample App - RED & SLO**
    - Taxa, erros e latência por serviço.
@@ -200,11 +251,13 @@ Depois do `make up`, abra o Grafana. A pasta **Tech Challenge** tem três dashbo
 3. **Cluster Health & Cost**
    - Saúde de nós e pods.
    - Custo mensal estimado por namespace e custo ocioso.
+4. **GitOps - Argo CD**
+   - Estado de sync/health das aplicações, operações de sync e latência do Git.
 
 Para ver os alertas de SLO disparando:
 
 ```bash
-make chaos       # inventory passa a falhar 50% (via Terraform, sem drift)
+make chaos       # inventory passa a falhar 50% (Terraform -> Application -> Argo CD, sem drift)
 # Alertmanager em ~5 min; notificações no Loki: {namespace="monitoring", app="alert-sink"}
 make chaos-off   # restaura o valor do tfvars
 ```
@@ -215,6 +268,7 @@ Para mudar o peso do canary, altere `canary_weight` em `terraform.tfvars` e rode
 
 ```
 .
+├── .github/workflows/           # ci, security e cd
 ├── Makefile                     # ponto de entrada único
 ├── app/                         # microsserviço instrumentado (FastAPI + OpenTelemetry)
 ├── bootstrap/                   # S3 local para o Terraform state (Docker Compose)
@@ -229,7 +283,8 @@ Para mudar o peso do canary, altere `canary_weight` em `terraform.tfvars` e rode
         │   ├── values/          # values dos charts (templates)
         │   └── dashboards/      # dashboards Grafana (JSON)
         ├── service-mesh/        # Istio + chart local com mTLS, tracing e monitors
-        └── sample-app/          # build da imagem, RBAC + chart local da aplicação
+        ├── gitops/              # Argo CD
+        └── sample-app/          # namespace, RBAC, Application do Argo CD + chart da aplicação
 ```
 
 ## Limitações conhecidas
@@ -237,5 +292,6 @@ Para mudar o peso do canary, altere `canary_weight` em `terraform.tfvars` e rode
 - Os backends de observabilidade rodam com 1 réplica e filesystem local. Em produção: modos distribuídos com object storage (S3/GCS).
 - O state local não tem locking. Em equipe: S3 com `use_lockfile` ou DynamoDB.
 - O custo é uma estimativa por requests com preço de referência, não a fatura de um provedor.
+- O `make up` depende do GitHub e do GHCR (o Argo CD sincroniza do repositório público e os nós baixam a imagem publicada).
 
 Detalhes e justificativas em [docs/decisions.md](docs/decisions.md).

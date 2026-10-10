@@ -75,14 +75,14 @@ clean: ## Remove the state backend and its data (run after down)
 	$(COMPOSE) down -v
 
 .PHONY: info
-info: ## Print URLs and Grafana credentials
-	@terraform -chdir=$(TF_DIR) output -json urls | tr -d '{}"' | tr ',' '\n' | sed 's/^/  /'
-	@echo "  grafana login: admin / $$(terraform -chdir=$(TF_DIR) output -raw grafana_admin_password)"
-	@echo "  argocd: make argocd -> http://localhost:8443 (admin / $$(kubectl --context $$(terraform -chdir=$(TF_DIR) output -raw kubeconfig_context) -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d))"
-
-.PHONY: argocd
-argocd: ## Open the Argo CD UI on http://localhost:8443
-	kubectl --context $$(terraform -chdir=$(TF_DIR) output -raw kubeconfig_context) -n argocd port-forward svc/argocd-server 8443:80
+info: ## Print the UI addresses and credentials
+	@echo "UIs (through the Istio ingress gateway):"
+	@terraform -chdir=$(TF_DIR) output -json urls | \
+	  python3 -c 'import json,sys; [print(f"  {k:<13} {v}") for k,v in sorted(json.load(sys.stdin).items())]'
+	@echo "Credentials:"
+	@echo "  grafana       admin / $$(terraform -chdir=$(TF_DIR) output -raw grafana_admin_password)"
+	@echo "  argocd        admin / $$(kubectl --context $$(terraform -chdir=$(TF_DIR) output -raw kubeconfig_context) \
+	  -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)"
 
 .PHONY: verify
 verify: ## Smoke test: app, metrics, logs, traces and mesh

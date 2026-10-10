@@ -1,0 +1,31 @@
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: platform
+  namespace: {{ .Values.ingress.namespace }}
+spec:
+  selector:
+    {{- toYaml .Values.ingress.selector | nindent 4 }}
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts: ["*"]
+{{- range .Values.ingress.routes }}
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: {{ .name }}
+  namespace: {{ $.Values.ingress.namespace }}
+spec:
+  hosts: [{{ .host | quote }}]
+  gateways: [platform]
+  http:
+    - route:
+        - destination:
+            host: {{ .service }}
+            port:
+              number: {{ .port }}
+{{- end }}

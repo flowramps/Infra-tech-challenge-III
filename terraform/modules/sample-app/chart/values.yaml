@@ -73,6 +73,7 @@ slo:
 network:
   monitoringNamespace: monitoring
   ingressNamespace: istio-ingress
-gateway:
-  selector:
-    istio: ingress
+# Published through the shared gateway created by the service-mesh module.
+ingress:
+  gateway: istio-ingress/platform
+  host: app.localhost

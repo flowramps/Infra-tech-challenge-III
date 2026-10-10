@@ -34,10 +34,8 @@ prometheus-node-exporter:
     limits: { cpu: 500m, memory: 128Mi }
 
 prometheus:
-  service:
-    type: NodePort
-    nodePort: ${prometheus_node_port}
   prometheusSpec:
+    externalUrl: ${prometheus_url}
     retention: ${prometheus_retention}
     # Pick up ServiceMonitors, PodMonitors and rules from every namespace and
     # release, not only the ones labelled for this Helm release.
@@ -62,9 +60,6 @@ prometheus:
               storage: ${prometheus_storage_size}
 
 alertmanager:
-  service:
-    type: NodePort
-    nodePort: ${alertmanager_node_port}
   config:
     global:
       resolve_timeout: 5m
@@ -89,6 +84,7 @@ alertmanager:
           - url: ${alert_webhook_url}
             send_resolved: true
   alertmanagerSpec:
+    externalUrl: ${alertmanager_url}
     resources:
       requests: { cpu: 20m, memory: 64Mi }
       limits: { cpu: 200m, memory: 128Mi }
@@ -106,9 +102,6 @@ grafana:
     existingSecret: ${grafana_admin_secret}
     userKey: admin-user
     passwordKey: admin-password
-  service:
-    type: NodePort
-    nodePort: ${grafana_node_port}
   persistence:
     enabled: true
     storageClassName: ${storage_class}
@@ -117,6 +110,8 @@ grafana:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { cpu: 500m, memory: 512Mi }
   grafana.ini:
+    server:
+      root_url: ${grafana_url}
     analytics:
       check_for_updates: false
       reporting_enabled: false

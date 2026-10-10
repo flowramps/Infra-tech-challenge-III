@@ -68,9 +68,9 @@ resource "helm_release" "kube_prometheus_stack" {
     storage_class           = var.storage_class
     prometheus_retention    = var.retention.metrics
     prometheus_storage_size = var.storage_size.prometheus
-    prometheus_node_port    = var.node_ports.prometheus
-    alertmanager_node_port  = var.node_ports.alertmanager
-    grafana_node_port       = var.node_ports.grafana
+    prometheus_url          = var.external_urls.prometheus
+    alertmanager_url        = var.external_urls.alertmanager
+    grafana_url             = var.external_urls.grafana
     grafana_admin_secret    = kubernetes_secret_v1.grafana_admin.metadata[0].name
     alert_webhook_url       = "http://${local.alert_sink}.${var.namespace}.svc.cluster.local:8080/alerts"
     loki_url                = local.loki_url

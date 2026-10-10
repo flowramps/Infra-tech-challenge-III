@@ -12,6 +12,7 @@ APP=$(url application)
 GRAFANA=$(url grafana)
 PROMETHEUS=$(url prometheus)
 ALERTMANAGER=$(url alertmanager)
+ARGOCD=$(url argocd)
 GRAFANA_AUTH="admin:$(terraform output -raw grafana_admin_password)"
 K="kubectl --context $CTX"
 
@@ -46,6 +47,12 @@ check "Ingress gateway -> frontend -> orders -> inventory" \
   bash -c "curl -sf --retry 5 --retry-all-errors $APP/ | grep -q inventory"
 check "HPAs are reading CPU metrics" \
   bash -c "! $K -n sample-app get hpa --no-headers | grep -q unknown"
+
+echo "Ingress"
+check "Grafana published at $GRAFANA" bash -c "curl -sf $GRAFANA/api/health | grep -q ok"
+check "Prometheus published at $PROMETHEUS" curl -sf "$PROMETHEUS/-/ready"
+check "Alertmanager published at $ALERTMANAGER" curl -sf "$ALERTMANAGER/-/ready"
+check "Argo CD published at $ARGOCD" curl -sf "$ARGOCD/healthz"
 
 echo "GitOps"
 check "Argo CD application Synced and Healthy" bash -c \

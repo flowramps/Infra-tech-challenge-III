@@ -1,28 +1,12 @@
 apiVersion: networking.istio.io/v1
-kind: Gateway
-metadata:
-  name: sample-app
-  labels:
-    {{- include "sample-app.labels" (dict "root" $) | nindent 4 }}
-spec:
-  selector:
-    {{- toYaml .Values.gateway.selector | nindent 4 }}
-  servers:
-    - port:
-        number: 80
-        name: http
-        protocol: HTTP
-      hosts: ["*"]
----
-apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: frontend-ingress
   labels:
     {{- include "sample-app.labels" (dict "root" $) | nindent 4 }}
 spec:
-  hosts: ["*"]
-  gateways: [sample-app]
+  hosts: [{{ .Values.ingress.host | quote }}]
+  gateways: [{{ .Values.ingress.gateway }}]
   http:
     - route:
         - destination:

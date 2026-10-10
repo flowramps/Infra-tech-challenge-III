@@ -2,12 +2,10 @@ cluster_name = "tech-challenge"
 node_image   = "kindest/node:v1.33.4"
 worker_count = 2
 
-host_ports = {
-  ingress      = 8080
-  grafana      = 3000
-  prometheus   = 9090
-  alertmanager = 9093
-}
+# UIs at http://<name>.localhost (resolved to 127.0.0.1 by the browser, no DNS).
+# Where *.localhost does not resolve, use ingress_domain = "127.0.0.1.nip.io".
+ingress_domain    = "localhost"
+ingress_host_port = 80
 
 chart_versions = {
   kube_prometheus_stack = "92.3.0"

@@ -15,5 +15,8 @@ resource "helm_release" "argocd" {
   wait       = true
   timeout    = 600
 
-  values = [file("${path.module}/values.yaml")]
+  values = [
+    file("${path.module}/values.yaml"),
+    yamlencode({ configs = { cm = { url = var.external_url } } }),
+  ]
 }

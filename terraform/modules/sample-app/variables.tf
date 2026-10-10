@@ -41,9 +41,14 @@ variable "ingress_namespace" {
   type        = string
 }
 
-variable "ingress_gateway_selector" {
-  description = "Labels selecting the Istio ingress gateway pods."
-  type        = map(string)
+variable "ingress_gateway" {
+  description = "Shared Istio Gateway (<namespace>/<name>) the application attaches to."
+  type        = string
+}
+
+variable "ingress_host" {
+  description = "Hostname the application is published at."
+  type        = string
 }
 
 variable "otlp_endpoint" {

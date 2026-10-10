@@ -55,8 +55,9 @@ resource "helm_release" "argocd_application" {
                 monitoringNamespace = var.monitoring_namespace
                 ingressNamespace    = var.ingress_namespace
               }
-              gateway = {
-                selector = var.ingress_gateway_selector
+              ingress = {
+                gateway = var.ingress_gateway
+                host    = var.ingress_host
               }
             }
           }

@@ -4,13 +4,8 @@ output "kubeconfig_context" {
 }
 
 output "urls" {
-  description = "Entry points published on the host."
-  value = {
-    application  = "http://localhost:${var.host_ports.ingress}"
-    grafana      = "http://localhost:${var.host_ports.grafana}"
-    prometheus   = "http://localhost:${var.host_ports.prometheus}"
-    alertmanager = "http://localhost:${var.host_ports.alertmanager}"
-  }
+  description = "UIs published through the ingress gateway."
+  value       = local.urls
 }
 
 output "grafana_admin_password" {

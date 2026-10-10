@@ -21,12 +21,12 @@ variable "chart_versions" {
   })
 }
 
-variable "node_ports" {
-  description = "NodePorts used to reach the UIs from the host."
+variable "external_urls" {
+  description = "URLs the UIs are published at (used for links and redirects)."
   type = object({
-    grafana      = number
-    prometheus   = number
-    alertmanager = number
+    grafana      = string
+    prometheus   = string
+    alertmanager = string
   })
 }
 

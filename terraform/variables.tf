@@ -14,14 +14,16 @@ variable "worker_count" {
   default     = 2
 }
 
-variable "host_ports" {
-  description = "Host ports (bound to 127.0.0.1) that expose the cluster entry points."
-  type = object({
-    ingress      = number
-    grafana      = number
-    prometheus   = number
-    alertmanager = number
-  })
+variable "ingress_domain" {
+  description = "Domain of the UIs (<name>.<domain>). *.localhost resolves to 127.0.0.1 without DNS; 127.0.0.1.nip.io is the public DNS alternative."
+  type        = string
+  default     = "localhost"
+}
+
+variable "ingress_host_port" {
+  description = "Host port (127.0.0.1) of the ingress gateway."
+  type        = number
+  default     = 80
 }
 
 variable "chart_versions" {

@@ -1,5 +1,5 @@
-# Local setup: the UI is reached with kubectl port-forward (make argocd),
-# so TLS termination on the server is not needed.
+# The UI is published in plain HTTP through the Istio ingress gateway,
+# so the server does not terminate TLS itself.
 configs:
   params:
     server.insecure: true

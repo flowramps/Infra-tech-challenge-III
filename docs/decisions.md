@@ -15,7 +15,7 @@ Cada decisão segue o formato: **contexto → decisão → trade-off**.
 
 **Alternativas.** minikube (provider Terraform pouco mantido, multi-nó menos estável), k3s (exige VMs; distribuição modificada, sem etcd por padrão) e k3d (bom, mas provider menos difundido e não é upstream).
 
-**Trade-offs.** Não há LoadBalancer nativo (uso NodePort + `extraPortMappings`); imagens locais precisam de `kind load`; os nós compartilham o kernel do host, o que exige aumentar os limites de `inotify` (o `make preflight` detecta).
+**Trade-offs.** Não há LoadBalancer nativo (uso um NodePort publicado via `extraPortMappings`, ver seção 13); os nós compartilham o kernel do host, o que exige aumentar os limites de `inotify` (o `make preflight` detecta).
 
 ## 2. Remote state em S3 local (Versity S3 Gateway)
 
@@ -133,3 +133,16 @@ Três perguntas, três comportamentos:
   - actions de terceiros fixadas por SHA (uma tag pode ser reescrita; um SHA, não);
   - runner fixado em `ubuntu-24.04`;
   - imagem com atestado de proveniência SLSA assinado sem chave (OIDC), verificável com `gh attestation verify`.
+
+## 13. Entrada única por hostname
+
+**Contexto.** Cada UI tinha um NodePort e uma porta no host, e o Argo CD dependia de um `port-forward` que precisava ficar rodando num terminal.
+
+**Decisão.** Uma porta no host (80) aponta para o Istio Ingress Gateway, que roteia por hostname (`<serviço>.<ingress_domain>`). Um `Gateway` compartilhado (`istio-ingress/platform`) recebe as rotas da plataforma, declaradas pelo Terraform, e a da aplicação, entregue pelo Argo CD.
+
+- **`*.localhost` como padrão.** Pela RFC 6761, browsers e o resolvedor do sistema resolvem esses nomes para 127.0.0.1 sem DNS: funciona offline e em redes que bloqueiam DNS rebinding.
+- **nip.io como alternativa** (`ingress_domain = "127.0.0.1.nip.io"`), para ambientes em que `*.localhost` não resolve.
+- **URLs coerentes.** Grafana (`root_url`), Prometheus e Alertmanager (`externalUrl`) e Argo CD (`url`) conhecem a própria URL pública, então links de alertas e redirects funcionam.
+- O mesmo caminho de produção: um ingress, TLS e DNS na borda, roteamento por host.
+
+**Trade-offs.** A porta 80 precisa estar livre (é configurável). Alterar o mapeamento de portas recria o cluster kind. Por isso o `make destroy` roda sem refresh: com a config do cluster alterada, o refresh planejaria a substituição e deixaria os providers do Kubernetes sem endpoint.

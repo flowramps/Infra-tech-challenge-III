@@ -21,7 +21,7 @@ make up
 
 ```mermaid
 flowchart LR
-    user([Usuário]) -->|localhost:8080| gw
+    user([Browser]) -->|"*.localhost:80"| gw
 
     subgraph host[Host / Docker]
         state[(S3 local<br/>Terraform state)]
@@ -82,7 +82,7 @@ Terraform é dono da **plataforma** (cluster, observabilidade, mesh, Argo CD) e 
 | kubectl    | 1.33           |
 | helm       | 3.x / 4.x      |
 
-Recursos: ~6 GB de RAM livres e 4 CPUs.
+Recursos: ~6 GB de RAM livres, 4 CPUs e a porta 80 livre no host.
 
 **Linux:** o kind multi-nó precisa de limites maiores de `inotify` (o `make preflight` verifica):
 
@@ -95,19 +95,23 @@ sudo sysctl -w fs.inotify.max_user_watches=524288 fs.inotify.max_user_instances=
 ```bash
 make up        # state backend + cluster + observabilidade + mesh + app (~10 min)
 make verify    # testes end-to-end de toda a plataforma
-make info      # URLs e senhas (Grafana e Argo CD)
-make argocd    # UI do Argo CD em http://localhost:8443
+make info      # URLs prontas e credenciais (Grafana e Argo CD)
 make down      # destrói o cluster (mantém o state)
 make clean     # remove o backend de state
 make help      # todos os comandos
 ```
 
-| Serviço      | URL                    |
-|--------------|------------------------|
-| Aplicação    | http://localhost:8080  |
-| Grafana      | http://localhost:3000 (`admin` / `make info`) |
-| Prometheus   | http://localhost:9090  |
-| Alertmanager | http://localhost:9093  |
+Tudo é publicado por uma **entrada única**: o Istio Ingress Gateway na porta 80 do host, com roteamento por hostname.
+
+| Serviço      | URL                          | Login             |
+|--------------|------------------------------|-------------------|
+| Aplicação    | http://app.localhost         |                   |
+| Grafana      | http://grafana.localhost     | `admin` / `make info` |
+| Argo CD      | http://argocd.localhost      | `admin` / `make info` |
+| Prometheus   | http://prometheus.localhost  |                   |
+| Alertmanager | http://alertmanager.localhost |                  |
+
+Qualquer `*.localhost` resolve para 127.0.0.1 sem consultar DNS (RFC 6761), tanto no browser quanto no sistema. Onde isso não funcionar, use `ingress_domain = "127.0.0.1.nip.io"` no `terraform.tfvars` (DNS público). Para usar outra porta, altere `ingress_host_port`.
 
 `make up` executa:
 
@@ -131,6 +135,11 @@ Cluster
 Application
   PASS Ingress gateway -> frontend -> orders -> inventory
   PASS HPAs are reading CPU metrics
+Ingress
+  PASS Grafana published at http://grafana.localhost
+  PASS Prometheus published at http://prometheus.localhost
+  PASS Alertmanager published at http://alertmanager.localhost
+  PASS Argo CD published at http://argocd.localhost
 GitOps
   PASS Argo CD application Synced and Healthy
   PASS Workloads run the image published by the CD pipeline

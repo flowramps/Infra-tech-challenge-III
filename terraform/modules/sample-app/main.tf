@@ -7,11 +7,11 @@ resource "kubernetes_namespace_v1" "this" {
   }
 }
 
-# The application is delivered by Argo CD. Terraform only declares *what* to
-# sync (repository, path, revision) and the environment parameters; the image
-# tag lives in the chart values in Git and is bumped by the CD pipeline.
-resource "helm_release" "argocd_application" {
-  name       = "sample-app"
+# Least privilege boundary for the application. Kept in its own release so
+# that on destroy the Application (and its cascading deletion) goes first: an
+# Application cannot finish deleting once its project is gone.
+resource "helm_release" "argocd_project" {
+  name       = "sample-app-project"
   namespace  = var.argocd_namespace
   repository = "https://argoproj.github.io/argo-helm"
   chart      = "argocd-apps"
@@ -35,7 +35,21 @@ resource "helm_release" "argocd_application" {
         }]
       }
     }
+  })]
+}
 
+# The application is delivered by Argo CD. Terraform only declares *what* to
+# sync (repository, path, revision) and the environment parameters; the image
+# tag lives in the chart values in Git and is bumped by the CD pipeline.
+resource "helm_release" "argocd_application" {
+  name       = "sample-app"
+  namespace  = var.argocd_namespace
+  repository = "https://argoproj.github.io/argo-helm"
+  chart      = "argocd-apps"
+  version    = var.argocd_apps_chart_version
+  wait       = true
+
+  values = [yamlencode({
     applications = {
       sample-app = {
         namespace  = var.argocd_namespace
@@ -86,4 +100,6 @@ resource "helm_release" "argocd_application" {
       }
     }
   })]
+
+  depends_on = [helm_release.argocd_project]
 }

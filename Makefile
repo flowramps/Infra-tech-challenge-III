@@ -68,7 +68,9 @@ apply: ## terraform apply
 
 .PHONY: destroy
 destroy: ## terraform destroy
-	terraform -chdir=$(TF_DIR) destroy $(TF_APP_VARS) -auto-approve
+	@# No refresh: when the cluster config changed, a refresh would plan its
+	@# replacement and leave the Kubernetes providers without an endpoint.
+	terraform -chdir=$(TF_DIR) destroy $(TF_APP_VARS) -refresh=false -auto-approve
 
 .PHONY: clean
 clean: ## Remove the state backend and its data (run after down)

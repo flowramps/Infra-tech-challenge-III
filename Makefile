@@ -7,6 +7,9 @@ TF_DIR       := terraform
 TF_VARS      := environments/$(ENV)/terraform.tfvars
 TF_BACKEND   := environments/$(ENV)/backend.hcl
 COMPOSE      := docker compose -f bootstrap/docker-compose.yml
+# Argo CD follows the checked-out branch (it must be pushed to GitHub).
+GITOPS_REVISION ?= $(shell git rev-parse --abbrev-ref HEAD)
+TF_APP_VARS  := -var-file=$(TF_VARS) -var gitops_revision=$(GITOPS_REVISION)
 
 # Remote state backend (bootstrap/docker-compose.yml). Local-only credentials.
 S3_ENDPOINT  := http://127.0.0.1:7070
@@ -57,15 +60,15 @@ init: ## terraform init against the remote state
 
 .PHONY: plan
 plan: ## terraform plan
-	terraform -chdir=$(TF_DIR) plan -var-file=$(TF_VARS)
+	terraform -chdir=$(TF_DIR) plan $(TF_APP_VARS)
 
 .PHONY: apply
 apply: ## terraform apply
-	terraform -chdir=$(TF_DIR) apply -var-file=$(TF_VARS) -auto-approve
+	terraform -chdir=$(TF_DIR) apply $(TF_APP_VARS) -auto-approve
 
 .PHONY: destroy
 destroy: ## terraform destroy
-	terraform -chdir=$(TF_DIR) destroy -var-file=$(TF_VARS) -auto-approve
+	terraform -chdir=$(TF_DIR) destroy $(TF_APP_VARS) -auto-approve
 
 .PHONY: clean
 clean: ## Remove the state backend and its data (run after down)
@@ -75,6 +78,11 @@ clean: ## Remove the state backend and its data (run after down)
 info: ## Print URLs and Grafana credentials
 	@terraform -chdir=$(TF_DIR) output -json urls | tr -d '{}"' | tr ',' '\n' | sed 's/^/  /'
 	@echo "  grafana login: admin / $$(terraform -chdir=$(TF_DIR) output -raw grafana_admin_password)"
+	@echo "  argocd: make argocd -> http://localhost:8443 (admin / $$(kubectl --context $$(terraform -chdir=$(TF_DIR) output -raw kubeconfig_context) -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d))"
+
+.PHONY: argocd
+argocd: ## Open the Argo CD UI on http://localhost:8443
+	kubectl --context $$(terraform -chdir=$(TF_DIR) output -raw kubeconfig_context) -n argocd port-forward svc/argocd-server 8443:80
 
 .PHONY: verify
 verify: ## Smoke test: app, metrics, logs, traces and mesh
@@ -82,11 +90,11 @@ verify: ## Smoke test: app, metrics, logs, traces and mesh
 
 .PHONY: chaos
 chaos: ## Make inventory fail 50% of the requests (fires SLO alerts)
-	terraform -chdir=$(TF_DIR) apply -var-file=$(TF_VARS) -var inventory_fault_rate=0.5 -auto-approve
+	terraform -chdir=$(TF_DIR) apply $(TF_APP_VARS) -var inventory_fault_rate=0.5 -auto-approve
 
 .PHONY: chaos-off
 chaos-off: ## Restore the inventory fault rate from the tfvars file
-	terraform -chdir=$(TF_DIR) apply -var-file=$(TF_VARS) -auto-approve
+	terraform -chdir=$(TF_DIR) apply $(TF_APP_VARS) -auto-approve
 
 .PHONY: lint
 lint: ## Static checks (terraform fmt/validate, helm lint)

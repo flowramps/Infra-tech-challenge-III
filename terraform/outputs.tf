@@ -19,7 +19,7 @@ output "grafana_admin_password" {
   sensitive   = true
 }
 
-output "sample_app_image" {
-  description = "Application image loaded into the cluster."
-  value       = module.sample_app.image
+output "argocd_application" {
+  description = "Argo CD Application that delivers the sample app."
+  value       = module.sample_app.argocd_application
 }

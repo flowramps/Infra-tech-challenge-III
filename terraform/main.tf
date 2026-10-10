@@ -52,18 +52,29 @@ module "service_mesh" {
   depends_on = [module.observability]
 }
 
+module "gitops" {
+  source = "./modules/gitops"
+
+  chart_version = var.chart_versions.argo_cd
+
+  # Argo CD ServiceMonitors need the Prometheus Operator CRDs.
+  depends_on = [module.observability]
+}
+
 module "sample_app" {
   source = "./modules/sample-app"
 
-  cluster_name             = module.cluster.name
-  source_dir               = "${path.root}/../app"
-  monitoring_namespace     = module.observability.namespace
-  ingress_namespace        = module.service_mesh.ingress_namespace
-  ingress_gateway_selector = module.service_mesh.ingress_gateway_selector
-  otlp_endpoint            = "http://${module.observability.tempo_otlp_grpc_host}:4317"
-  canary_weight            = var.canary_weight
-  inventory_fault_rate     = var.inventory_fault_rate
+  argocd_namespace          = module.gitops.namespace
+  argocd_apps_chart_version = var.chart_versions.argocd_apps
+  repo_url                  = var.gitops_repo_url
+  target_revision           = var.gitops_revision
+  monitoring_namespace      = module.observability.namespace
+  ingress_namespace         = module.service_mesh.ingress_namespace
+  ingress_gateway_selector  = module.service_mesh.ingress_gateway_selector
+  otlp_endpoint             = "http://${module.observability.tempo_otlp_grpc_host}:4317"
+  canary_weight             = var.canary_weight
+  inventory_fault_rate      = var.inventory_fault_rate
 
   # Sidecar injection and Istio CRDs must exist before the application.
-  depends_on = [module.service_mesh]
+  depends_on = [module.service_mesh, module.gitops]
 }

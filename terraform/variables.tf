@@ -33,6 +33,8 @@ variable "chart_versions" {
     alloy                 = string
     metrics_server        = string
     istio                 = string
+    argo_cd               = string
+    argocd_apps           = string
   })
 }
 
@@ -61,4 +63,15 @@ variable "inventory_fault_rate" {
   description = "Fraction of inventory requests that fail on purpose."
   type        = number
   default     = 0.02
+}
+
+variable "gitops_repo_url" {
+  description = "Git repository Argo CD syncs the application from."
+  type        = string
+}
+
+variable "gitops_revision" {
+  description = "Branch Argo CD tracks (the Makefile passes the checked-out branch)."
+  type        = string
+  default     = "main"
 }

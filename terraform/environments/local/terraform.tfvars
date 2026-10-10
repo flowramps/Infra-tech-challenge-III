@@ -16,6 +16,8 @@ chart_versions = {
   alloy                 = "1.13.1"
   metrics_server        = "3.14.0"
   istio                 = "1.30.5"
+  argo_cd               = "10.10.2"
+  argocd_apps           = "2.0.6"
 }
 
 retention = {
@@ -27,3 +29,5 @@ retention = {
 tracing_sampling_percentage = 100
 canary_weight               = 10
 inventory_fault_rate        = 0.02
+
+gitops_repo_url = "https://github.com/flowramps/Infra-tech-challenge-III.git"

@@ -1,0 +1,44 @@
+# S3-compatible object storage used only as the Terraform remote state backend.
+# It runs outside the cluster on purpose: the state must outlive the cluster.
+#
+#   docker compose -f bootstrap/docker-compose.yml up -d s3
+#   docker compose -f bootstrap/docker-compose.yml run --rm create-bucket
+name: tfstate
+
+x-credentials: &credentials
+  AWS_ACCESS_KEY_ID: ${TFSTATE_ACCESS_KEY:-tfstate-local}
+  AWS_SECRET_ACCESS_KEY: ${TFSTATE_SECRET_KEY:-tfstate-local-secret}
+  AWS_DEFAULT_REGION: us-east-1
+
+services:
+  s3:
+    image: versity/versitygw:v1.8.0
+    command: ["--port", ":7070", "posix", "--versioning-dir", "/versions", "/buckets"]
+    environment:
+      ROOT_ACCESS_KEY: ${TFSTATE_ACCESS_KEY:-tfstate-local}
+      ROOT_SECRET_KEY: ${TFSTATE_SECRET_KEY:-tfstate-local-secret}
+    ports:
+      - "127.0.0.1:7070:7070"
+    volumes:
+      - buckets:/buckets
+      - versions:/versions
+    restart: unless-stopped
+
+  # One-shot job: creates the state bucket with versioning (idempotent).
+  create-bucket:
+    image: amazon/aws-cli:2.37.12
+    profiles: ["init"]
+    depends_on: [s3]
+    environment: *credentials
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        s3="aws --endpoint-url http://s3:7070 s3api"
+        for _ in $$(seq 1 30); do $$s3 list-buckets >/dev/null 2>&1 && break; sleep 1; done
+        $$s3 head-bucket --bucket tfstate 2>/dev/null || $$s3 create-bucket --bucket tfstate >/dev/null
+        $$s3 put-bucket-versioning --bucket tfstate --versioning-configuration Status=Enabled
+        echo "bucket tfstate ready"
+
+volumes:
+  buckets:
+  versions:

@@ -47,6 +47,12 @@ check "Ingress gateway -> frontend -> orders -> inventory" \
 check "HPAs are reading CPU metrics" \
   bash -c "! $K -n sample-app get hpa --no-headers | grep -q unknown"
 
+echo "GitOps"
+check "Argo CD application Synced and Healthy" bash -c \
+  "[ \"\$($K -n argocd get applications.argoproj.io sample-app -o jsonpath='{.status.sync.status}/{.status.health.status}')\" = Synced/Healthy ]"
+check "Workloads run the image published by the CD pipeline" bash -c \
+  "$K -n sample-app get deploy -o jsonpath='{..image}' | grep -q ghcr.io/"
+
 echo "Metrics"
 check "Application metrics scraped" prom_positive 'sum(rate(http_server_requests_total{namespace="sample-app"}[5m]))'
 check "Envoy (Istio) metrics scraped" prom_positive 'sum(rate(istio_requests_total[5m]))'

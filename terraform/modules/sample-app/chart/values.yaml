@@ -1,18 +1,14 @@
 # Updated by the CD pipeline (.github/workflows/cd.yml) on every release.
 image:
   repository: ghcr.io/flowramps/infra-tech-challenge-iii/sample-app
-  tag: bootstrap
+  tag: ef745e9e5475
   pullPolicy: IfNotPresent
-
 # OTLP/gRPC endpoint for application spans.
 otlpEndpoint: http://tempo.monitoring.svc.cluster.local:4317
-
 # Percentage of orders traffic sent to the v2 canary.
 canaryWeight: 10
-
 # Fraction of inventory requests that fail on purpose.
 faultRate: 0.02
-
 services:
   - name: frontend
     downstreams: ["http://orders:8080/"]
@@ -45,15 +41,12 @@ services:
     versions:
       - name: v1
         replicas: 2
-
 autoscaling:
   maxReplicasFactor: 3
   targetCPUUtilization: 70
-
 resources:
-  requests: { cpu: 50m, memory: 96Mi }
-  limits: { cpu: 500m, memory: 256Mi }
-
+  requests: {cpu: 50m, memory: 96Mi}
+  limits: {cpu: 500m, memory: 256Mi}
 trafficPolicy:
   connectionPool:
     tcp:
@@ -66,24 +59,20 @@ trafficPolicy:
     interval: 10s
     baseEjectionTime: 30s
     maxEjectionPercent: 50
-
 loadgen:
   enabled: true
   image: curlimages/curl:8.16.0
   # Requests per second sent to the frontend.
   intervalSeconds: 0.2
-
 slo:
   # 99.5% of requests succeed (non 5xx).
   availability: 0.995
   # 99% of requests complete within latencyThreshold seconds.
   latency: 0.99
   latencyThreshold: "0.5"
-
 network:
   monitoringNamespace: monitoring
   ingressNamespace: istio-ingress
-
 gateway:
   selector:
     istio: ingress

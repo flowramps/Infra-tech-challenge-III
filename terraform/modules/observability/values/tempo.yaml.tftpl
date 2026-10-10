@@ -1,0 +1,39 @@
+tempo:
+  retention: ${retention}
+  reportingEnabled: false
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 1Gi }
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: "0.0.0.0:4317"
+        http:
+          endpoint: "0.0.0.0:4318"
+  # Derive RED metrics and the service graph from spans and push them to
+  # Prometheus, so Grafana can draw the service map.
+  metricsGenerator:
+    enabled: true
+    remoteWriteUrl: ${prometheus_remote_write_url}
+    storage:
+      path: /var/tempo/generator/wal
+      remote_write:
+        - url: ${prometheus_remote_write_url}
+          send_exemplars: true
+    traces_storage:
+      path: /var/tempo/generator/traces
+  overrides:
+    defaults:
+      metrics_generator:
+        processors:
+          - service-graphs
+          - span-metrics
+
+persistence:
+  enabled: true
+  storageClassName: ${storage_class}
+  size: ${storage_size}
+
+serviceMonitor:
+  enabled: true

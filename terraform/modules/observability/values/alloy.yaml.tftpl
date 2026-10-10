@@ -1,0 +1,78 @@
+# One Alloy agent per node tails the logs of the pods running on that node
+# through the Kubernetes API and ships them to Loki.
+controller:
+  type: daemonset
+
+alloy:
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits: { cpu: 300m, memory: 256Mi }
+  configMap:
+    content: |
+      discovery.kubernetes "pods" {
+        role = "pod"
+        selectors {
+          role  = "pod"
+          field = "spec.nodeName=" + sys.env("HOSTNAME")
+        }
+      }
+
+      discovery.relabel "pods" {
+        targets = discovery.kubernetes.pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_node_name"]
+          target_label  = "node"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name", "__meta_kubernetes_pod_label_app"]
+          regex         = "^;*([^;]+)(;.*)?$"
+          target_label  = "app"
+        }
+      }
+
+      loki.source.kubernetes "pods" {
+        targets    = discovery.relabel.pods.output
+        forward_to = [loki.process.pods.receiver]
+      }
+
+      loki.process "pods" {
+        // Application logs are JSON: promote the level to a label and keep
+        // the trace id as structured metadata for log <-> trace correlation.
+        stage.match {
+          selector = "{container=\"app\"}"
+
+          stage.json {
+            expressions = { level = "level", trace_id = "trace_id" }
+          }
+          stage.labels {
+            values = { level = "" }
+          }
+          stage.structured_metadata {
+            values = { trace_id = "" }
+          }
+        }
+
+        forward_to = [loki.write.default.receiver]
+      }
+
+      loki.write "default" {
+        endpoint {
+          url = "${loki_push_url}"
+        }
+      }
+
+serviceMonitor:
+  enabled: true

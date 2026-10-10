@@ -1,0 +1,179 @@
+# Prometheus Operator + Prometheus + Alertmanager + Grafana + exporters.
+crds:
+  enabled: true
+
+defaultRules:
+  create: true
+
+kubeControllerManager:
+  serviceMonitor:
+    https: true
+    insecureSkipVerify: true
+kubeScheduler:
+  serviceMonitor:
+    https: true
+    insecureSkipVerify: true
+kubeEtcd:
+  service:
+    port: 2381
+    targetPort: 2381
+
+prometheusOperator:
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 300m, memory: 256Mi }
+
+kube-state-metrics:
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits: { cpu: 200m, memory: 256Mi }
+
+prometheus-node-exporter:
+  resources:
+    requests: { cpu: 50m, memory: 32Mi }
+    limits: { cpu: 500m, memory: 128Mi }
+
+prometheus:
+  service:
+    type: NodePort
+    nodePort: ${prometheus_node_port}
+  prometheusSpec:
+    retention: ${prometheus_retention}
+    # Pick up ServiceMonitors, PodMonitors and rules from every namespace and
+    # release, not only the ones labelled for this Helm release.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    # Tempo's metrics-generator pushes service graph and span metrics here.
+    enableRemoteWriteReceiver: true
+    enableFeatures:
+      - exemplar-storage
+    resources:
+      requests: { cpu: 200m, memory: 512Mi }
+      limits: { cpu: "1", memory: 2Gi }
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: ${storage_class}
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: ${prometheus_storage_size}
+
+alertmanager:
+  service:
+    type: NodePort
+    nodePort: ${alertmanager_node_port}
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: webhook
+      group_by: ["alertname", "namespace", "severity"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      routes:
+        - receiver: "null"
+          matchers:
+            - alertname = "InfoInhibitor"
+    inhibit_rules:
+      - source_matchers: ['severity = "critical"']
+        target_matchers: ['severity =~ "warning|info"']
+        equal: ["namespace", "alertname"]
+    receivers:
+      - name: "null"
+      - name: webhook
+        webhook_configs:
+          - url: ${alert_webhook_url}
+            send_resolved: true
+  alertmanagerSpec:
+    resources:
+      requests: { cpu: 20m, memory: 64Mi }
+      limits: { cpu: 200m, memory: 128Mi }
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: ${storage_class}
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 1Gi
+
+grafana:
+  admin:
+    existingSecret: ${grafana_admin_secret}
+    userKey: admin-user
+    passwordKey: admin-password
+  service:
+    type: NodePort
+    nodePort: ${grafana_node_port}
+  persistence:
+    enabled: true
+    storageClassName: ${storage_class}
+    size: 1Gi
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  grafana.ini:
+    analytics:
+      check_for_updates: false
+      reporting_enabled: false
+  sidecar:
+    datasources:
+      # Link Prometheus exemplars to the trace that produced them.
+      exemplarTraceIdDestinations:
+        datasourceUid: tempo
+        traceIdLabelName: trace_id
+    dashboards:
+      searchNamespace: ALL
+      folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: true
+  additionalDataSources:
+    - name: Loki
+      uid: loki
+      type: loki
+      access: proxy
+      url: ${loki_url}
+      jsonData:
+        maxLines: 1000
+        derivedFields:
+          - name: TraceID
+            matcherRegex: '"trace_id":\s*"(\w+)"'
+            url: "$${__value.raw}"
+            datasourceUid: tempo
+            urlDisplayLabel: View trace
+    - name: Tempo
+      uid: tempo
+      type: tempo
+      access: proxy
+      url: ${tempo_url}
+      jsonData:
+        nodeGraph:
+          enabled: true
+        serviceMap:
+          datasourceUid: prometheus
+        lokiSearch:
+          datasourceUid: loki
+        tracesToLogsV2:
+          datasourceUid: loki
+          spanStartTimeShift: "-5m"
+          spanEndTimeShift: "5m"
+          filterByTraceID: true
+          tags:
+            - key: service.name
+              value: app
+        tracesToMetrics:
+          datasourceUid: prometheus
+          spanStartTimeShift: "-5m"
+          spanEndTimeShift: "5m"
+          tags:
+            - key: service.name
+              value: app
+          queries:
+            - name: Request rate
+              query: sum(rate(http_server_requests_total{$__tags}[1m]))
+            - name: Error rate
+              query: sum(rate(http_server_requests_total{$__tags, code=~"5.."}[1m]))

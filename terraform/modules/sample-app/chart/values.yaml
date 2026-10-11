@@ -1,7 +1,7 @@
 # Updated by the CD pipeline (.github/workflows/cd.yml) on every release.
 image:
   repository: ghcr.io/flowramps/infra-tech-challenge-iii/sample-app
-  tag: ef745e9e5475
+  tag: 6d48abf3a3d1
   pullPolicy: IfNotPresent
 # OTLP/gRPC endpoint for application spans.
 otlpEndpoint: http://tempo.monitoring.svc.cluster.local:4317

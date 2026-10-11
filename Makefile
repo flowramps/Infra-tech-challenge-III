@@ -1,4 +1,7 @@
 SHELL := /usr/bin/env bash
+
+# Project-local tools installed by `make tools` take precedence.
+export PATH := $(CURDIR)/.bin:$(PATH)
 .SHELLFLAGS := -euo pipefail -c
 .DEFAULT_GOAL := help
 
@@ -43,15 +46,12 @@ up: preflight state init apply info ## Create everything (state backend, cluster
 down: destroy ## Destroy the cluster (keeps the state backend)
 
 .PHONY: preflight
-preflight: ## Check local prerequisites
-	@for bin in docker kind terraform kubectl helm; do \
-	  command -v $$bin >/dev/null || { echo "missing required tool: $$bin" >&2; exit 1; }; \
-	done
-	@if [ "$$(uname)" = Linux ] && [ "$$(sysctl -n fs.inotify.max_user_instances)" -lt 512 ]; then \
-	  echo "fs.inotify limits are too low for a multi-node kind cluster (workers fail to join). Run:" >&2; \
-	  echo "  sudo sysctl -w fs.inotify.max_user_watches=524288 fs.inotify.max_user_instances=512" >&2; \
-	  exit 1; \
-	fi
+preflight: ## Check local prerequisites (diagnose only, installs nothing)
+	@./scripts/preflight.sh
+
+.PHONY: tools
+tools: ## Opt-in: install pinned, checksum-verified kind/kubectl/helm/terraform into .bin/ (no sudo)
+	@./scripts/install-tools.sh
 
 .PHONY: state
 state: ## Start the S3-compatible state backend and create the bucket

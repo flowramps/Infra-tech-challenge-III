@@ -11,6 +11,8 @@ override.tf.json
 # kubeconfig written by the kind provider (contains admin credentials)
 terraform/*-config
 
+.bin/
+
 # Local secrets (see .env.example)
 .env
 

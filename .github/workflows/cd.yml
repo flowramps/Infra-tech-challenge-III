@@ -5,9 +5,8 @@ name: cd
 # inside the cluster, pulls the change and rolls it out.
 on:
   push:
-    # TEMP: feat/gitops exercises the pipeline before merge; remove it then.
-    branches: [main, feat/gitops]
-    paths: ["app/**", ".github/workflows/cd.yml"]
+    branches: [main]
+    paths: ["app/**"]
   workflow_dispatch:
 
 # A release is never cancelled halfway (image pushed but tag not bumped).

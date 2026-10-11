@@ -83,6 +83,8 @@ Uma imagem, três serviços (`frontend → orders → inventory`), papel definid
 - **RBAC de menor privilégio**: o grupo `sample-app-developers` lê workloads e logs e pode escalar Deployments, mas não lê Secrets nem altera políticas.
 - **Secrets**: a senha do Grafana é gerada pelo Terraform (`random_password`) e entregue via Secret do Kubernetes (`existingSecret`), sem valor fixo no código. Em produção: External Secrets + Vault/Secrets Manager, ou Sealed Secrets para GitOps.
 - **Pods endurecidos**: non-root, `readOnlyRootFilesystem`, `drop: ALL`, seccomp `RuntimeDefault`, sem token de ServiceAccount montado.
+- **Nenhum container de longa duração roda como root**, inclusive os componentes de terceiros: app 10001, Envoy/istiod 1337, Argo CD 999, Prometheus/Alertmanager 1000, Grafana 472, Loki/Tempo 10001, exporters 65534. O Alloy roda como root por padrão no chart; como aqui ele lê os logs pela API do Kubernetes e não pelo disco do nó, roda como 473.
+- **Exceção conhecida: `istio-init`.** O init container do modo sidecar roda como root com `NET_ADMIN`/`NET_RAW` por alguns segundos, para configurar o iptables do pod, e termina antes da aplicação subir. Em produção, o **Istio CNI plugin** move essa etapa para um DaemonSet do nó e elimina a exceção; o modo ambient também.
 
 ## 8. Alta disponibilidade e resiliência
 

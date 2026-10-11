@@ -4,6 +4,17 @@ controller:
   type: daemonset
 
 alloy:
+  # Logs are read through the Kubernetes API, not from the node filesystem,
+  # so the agent does not need root (the image default).
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 473
+    runAsGroup: 473
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
   resources:
     requests: { cpu: 20m, memory: 64Mi }
     limits: { cpu: 300m, memory: 256Mi }

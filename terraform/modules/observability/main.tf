@@ -151,10 +151,13 @@ resource "helm_release" "tempo" {
     storage_size                = var.storage_size.tempo
     retention                   = var.retention.traces
     prometheus_remote_write_url = "${local.prometheus}/api/v1/write"
+    trace_bucket                = local.trace_bucket
+    trace_store_host            = local.trace_store_host
+    trace_store_secret          = kubernetes_secret_v1.trace_store.metadata[0].name
   })]
 
   # The chart ships a ServiceMonitor, whose CRD comes with kube-prometheus-stack.
-  depends_on = [helm_release.kube_prometheus_stack]
+  depends_on = [helm_release.kube_prometheus_stack, kubernetes_deployment_v1.trace_store]
 }
 
 # --- Grafana dashboards (loaded by the Grafana sidecar) --------------------------

@@ -4,6 +4,38 @@ tempo:
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { cpu: "1", memory: 1Gi }
+  # Blocks go to the in-cluster object store (trace-storage.tf); the WAL
+  # stays on the local volume. Credentials come from a Secret through env
+  # vars, expanded by -config.expand-env.
+  storage:
+    trace:
+      backend: s3
+      s3:
+        bucket: ${trace_bucket}
+        endpoint: ${trace_store_host}
+        insecure: true
+        forcepathstyle: true
+        access_key: $${S3_ACCESS_KEY}
+        secret_key: $${S3_SECRET_KEY}
+      wal:
+        path: /var/tempo/wal
+  # Cut blocks every 5 minutes: traces reach the object store quickly and the
+  # ingester keeps less in memory (default is 30m).
+  ingester:
+    max_block_duration: 5m
+  extraArgs:
+    config.expand-env: true
+  extraEnv:
+    - name: S3_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: ${trace_store_secret}
+          key: access-key
+    - name: S3_SECRET_KEY
+      valueFrom:
+        secretKeyRef:
+          name: ${trace_store_secret}
+          key: secret-key
   receivers:
     otlp:
       protocols:

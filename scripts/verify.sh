@@ -80,6 +80,12 @@ check "Traces for frontend in Tempo" bash -c \
     --data-urlencode 'q={resource.service.name=\"frontend\"}' --data-urlencode limit=1 |
     python3 -c \"import json,sys; sys.exit(0 if json.load(sys.stdin).get('traces') else 1)\""
 
+check "TraceQL metrics (Grafana Traces Drilldown)" bash -c \
+  "curl -sf -u $GRAFANA_AUTH -G '$GRAFANA/api/datasources/proxy/uid/tempo/api/metrics/query_range' \
+    --data-urlencode 'q={nestedSetParent<0} | rate() by(resource.service.name)' \
+    --data-urlencode start=\$(( \$(date +%s) - 300 )) --data-urlencode end=\$(date +%s) --data-urlencode step=60s |
+    python3 -c \"import json,sys; sys.exit(0 if json.load(sys.stdin).get('series') else 1)\""
+
 echo "Alerting"
 check "Watchdog alert reaching Alertmanager" bash -c \
   "curl -sf '$ALERTMANAGER/api/v2/alerts?filter=alertname%3D%22Watchdog%22' | grep -q Watchdog"

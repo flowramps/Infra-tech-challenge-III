@@ -153,6 +153,7 @@ Logs
   PASS Application logs in Loki
 Traces
   PASS Traces for frontend in Tempo
+  PASS TraceQL metrics (Grafana Traces Drilldown)
 Alerting
   PASS Watchdog alert reaching Alertmanager
 Security

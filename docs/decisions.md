@@ -58,6 +58,7 @@ cluster ──► observability ──► service_mesh ──► sample_app
   - log → trace: `trace_id` no log JSON + derived field no datasource Loki;
   - trace → log/métrica: `tracesToLogsV2` e `tracesToMetrics` no datasource Tempo;
   - service graph: o metrics-generator do Tempo envia métricas de spans ao Prometheus via remote write.
+  - métricas direto dos traces: o processador `local-blocks` atende consultas TraceQL metrics (`{status=error} | rate() by(resource.service.name)`), usadas pelo Grafana Traces Drilldown.
 
 ## 5. Aplicação de exemplo
 

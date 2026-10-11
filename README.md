@@ -3,8 +3,18 @@
 Cluster Kubernetes local (kind, 1 control plane + 2 workers) com stack completa de observabilidade (Prometheus, Loki, Tempo, Grafana), service mesh (Istio) e uma aplicação de 3 microsserviços instrumentada. A plataforma é provisionada por Terraform, com **um comando**; a aplicação é entregue por **GitOps (Argo CD)** a partir de uma esteira com gates de segurança.
 
 ```bash
-make up
+make up     # cria tudo (~10 min)
+make info   # mostra as URLs e as credenciais
 ```
+
+| Acesso | URL |
+|---|---|
+| Aplicação | http://app.localhost |
+| Grafana | http://grafana.localhost |
+| Argo CD | http://argocd.localhost |
+| Prometheus | http://prometheus.localhost |
+| Alertmanager | http://alertmanager.localhost |
+| Terraform state (VersityGW Explorer) | http://localhost:7071 |
 
 ## Sumário
 
@@ -122,9 +132,9 @@ O backend do Terraform state roda **fora do cluster**, de propósito (o state pr
 
 | Serviço | URL | Login |
 |---|---|---|
-| Terraform state (Versity S3 Gateway) | http://localhost:7071 | access key / secret em `make info` |
+| Terraform state (VersityGW Explorer) | http://localhost:7071 | access key / secret em `make info` |
 
-Nela dá para ver o bucket `tfstate` e o **histórico de versões do state**, uma por `apply`.
+É a WebUI do Versity S3 Gateway. No login, use o S3 Endpoint `http://localhost:7070`, a access key e a secret, e deixe *Admin API Endpoint* vazio. Nela dá para ver o bucket `tfstate` e o **histórico de versões do state**, uma por `apply`.
 
 Qualquer `*.localhost` resolve para 127.0.0.1 sem consultar DNS (RFC 6761), tanto no browser quanto no sistema. Onde isso não funcionar, use `ingress_domain = "127.0.0.1.nip.io"` no `terraform.tfvars` (DNS público). Para usar outra porta, altere `ingress_host_port`.
 

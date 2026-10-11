@@ -23,10 +23,23 @@ tempo:
         secret_key: $${S3_SECRET_KEY}
       wal:
         path: /var/tempo/wal
+      # Defaults (400 workers, 50 shards per trace lookup) are sized for a
+      # distributed deployment. In a single binary they open dozens of blocks
+      # at once and one trace-by-ID query pushed memory past 2Gi (OOMKilled).
+      pool:
+        max_workers: 20
+        queue_depth: 2000
   # Cut blocks every 5 minutes: traces reach the object store quickly and the
   # ingester keeps less in memory (default is 30m).
   ingester:
     max_block_duration: 5m
+  querier:
+    max_concurrent_queries: 4
+  queryFrontend:
+    trace_by_id:
+      query_shards: 4
+    search:
+      concurrent_jobs: 50
   extraArgs:
     config.expand-env: true
   extraEnv:

@@ -151,6 +151,8 @@ Metrics
   PASS Tempo service graph metrics remote-written
 Logs
   PASS Application logs in Loki
+  PASS Control plane logs in Loki (kube-system)
+  PASS Log agent runs without root and without capabilities
 Traces
   PASS Traces for frontend in Tempo
   PASS TraceQL metrics (Grafana Traces Drilldown)

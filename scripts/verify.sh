@@ -74,6 +74,16 @@ check "Application logs in Loki" bash -c \
     --data-urlencode 'query={namespace=\"sample-app\", container=\"app\"}' --data-urlencode limit=1 |
     python3 -c \"import json,sys; sys.exit(0 if json.load(sys.stdin)['data']['result'] else 1)\""
 
+check "Control plane logs in Loki (kube-system)" bash -c \
+  "curl -sf -u $GRAFANA_AUTH -G '$GRAFANA/api/datasources/proxy/uid/loki/loki/api/v1/query' \
+    --data-urlencode 'query=sum(count_over_time({namespace=\"kube-system\", node=~\".*control-plane\"}[15m]))' |
+    python3 -c \"import json,sys; r=json.load(sys.stdin)['data']['result']; sys.exit(0 if r and float(r[0]['value'][1]) > 0 else 1)\""
+check "Log agent runs without root and without capabilities" bash -c \
+  "for p in \$($K -n monitoring get pods -l app.kubernetes.io/name=alloy -o name); do
+     [ \"\$($K -n monitoring exec \$p -c alloy -- id -u)\" != 0 ] &&
+     $K -n monitoring exec \$p -c alloy -- grep -q 'CapEff:.0000000000000000' /proc/1/status || exit 1
+   done"
+
 echo "Traces"
 check "Traces for frontend in Tempo" bash -c \
   "curl -sf -u $GRAFANA_AUTH -G '$GRAFANA/api/datasources/proxy/uid/tempo/api/search' \

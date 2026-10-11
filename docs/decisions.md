@@ -51,7 +51,7 @@ cluster ──► observability ──► service_mesh ──► sample_app
 | Traces   | OTLP direto da app + Envoy (Istio)       | Tempo      |
 
 - **kube-prometheus-stack** entrega Prometheus, Alertmanager, Grafana, node-exporter, kube-state-metrics e regras padrão da comunidade.
-- **Alloy** em vez de Promtail (em fim de vida). Lê logs pela API do Kubernetes, só dos pods do próprio nó, sem montar `hostPath`.
+- **Alloy** em vez de Promtail (em fim de vida), como DaemonSet que lê os arquivos de log do nó (`/var/log/pods`). Detalhes na seção 14.
 - **Loki e Tempo em modo single binary com filesystem + PVC.** O modo distribuído com object storage é o caminho para produção, mas multiplicaria os pods sem agregar valor localmente.
 - **Correlação entre os três sinais:**
   - métrica → trace: *exemplars* no histograma de latência;
@@ -83,7 +83,7 @@ Uma imagem, três serviços (`frontend → orders → inventory`), papel definid
 - **RBAC de menor privilégio**: o grupo `sample-app-developers` lê workloads e logs e pode escalar Deployments, mas não lê Secrets nem altera políticas.
 - **Secrets**: a senha do Grafana é gerada pelo Terraform (`random_password`) e entregue via Secret do Kubernetes (`existingSecret`), sem valor fixo no código. Em produção: External Secrets + Vault/Secrets Manager, ou Sealed Secrets para GitOps.
 - **Pods endurecidos**: non-root, `readOnlyRootFilesystem`, `drop: ALL`, seccomp `RuntimeDefault`, sem token de ServiceAccount montado.
-- **Nenhum container de longa duração roda como root**, inclusive os componentes de terceiros: app 10001, Envoy/istiod 1337, Argo CD 999, Prometheus/Alertmanager 1000, Grafana 472, Loki/Tempo 10001, exporters 65534. O Alloy roda como root por padrão no chart; como aqui ele lê os logs pela API do Kubernetes e não pelo disco do nó, roda como 473.
+- **Nenhum container de longa duração roda como root**, inclusive os componentes de terceiros: app 10001, Envoy/istiod 1337, Argo CD 999, Prometheus/Alertmanager 1000, Grafana 472, Loki/Tempo 10001, exporters 65534. O Alloy, que o chart roda como root por padrão, roda como 473 sem nenhuma capability (seção 14).
 - **Exceção conhecida: `istio-init`.** O init container do modo sidecar roda como root com `NET_ADMIN`/`NET_RAW` por alguns segundos, para configurar o iptables do pod, e termina antes da aplicação subir. Em produção, o **Istio CNI plugin** move essa etapa para um DaemonSet do nó e elimina a exceção; o modo ambient também.
 
 ## 8. Alta disponibilidade e resiliência
@@ -149,3 +149,29 @@ Três perguntas, três comportamentos:
 - O mesmo caminho de produção: um ingress, TLS e DNS na borda, roteamento por host.
 
 **Trade-offs.** A porta 80 precisa estar livre (é configurável). Alterar o mapeamento de portas recria o cluster kind. Por isso o `make destroy` roda sem refresh: com a config do cluster alterada, o refresh planejaria a substituição e deixaria os providers do Kubernetes sem endpoint.
+
+## 14. Coleta de logs pelo disco do nó, sem root
+
+**Contexto.** Há duas formas de um agente coletar logs de containers:
+
+| | Disco do nó (`loki.source.file`) | API do Kubernetes (`loki.source.kubernetes`) |
+|---|---|---|
+| Caminho | arquivo → agente | arquivo → kubelet → API server → agente |
+| Escala | cada nó lê os próprios arquivos | uma conexão permanente por container passando pelo API server |
+| Control plane indisponível | continua coletando | perde logs |
+| Pods de vida curta | capturados (o arquivo fica no disco) | podem ser perdidos |
+| Acesso exigido | `hostPath` e leitura de arquivos `root:root 0640` | só RBAC `pods/log` |
+
+**Decisão.** Ler do disco, que é o padrão de produção, sem abrir mão de rodar sem root:
+
+- **Leitura pelo grupo, não pelo usuário root.** Os arquivos são `root:root 0640` num diretório `0750`. O agente roda como `uid 473` com `supplementalGroups: [0]` e lê pela permissão de grupo, com **zero capabilities** (`CapEff: 0`). Adicionar `CAP_DAC_READ_SEARCH` a um usuário não-root não funcionaria: sem *ambient capabilities* (não usadas pelo containerd), a capability se perde no `exec`.
+- **Montagem mínima.** Só `/var/log/pods`, somente leitura (o chart montaria `/var/log` inteiro).
+- **Posições persistidas** em `hostPath` (`/var/lib/alloy`). Um restart do agente continua de onde parou: sem duplicar nem perder linhas. Um init container de ~1 s, só com `CAP_CHOWN`, entrega o diretório ao usuário do agente.
+- **Control plane incluído.** Toleration para os nós de control plane. Os static pods (etcd, API server, scheduler, controller-manager) gravam sob o hash da configuração, lido da anotação `kubernetes.io/config.mirror`, e não sob o UID do pod.
+- **`stage.cri`** remove o envelope do runtime (timestamp, stream, flag de linha parcial) e preserva a linha e o horário originais.
+
+**Validação.** Linhas sem o envelope CRI, labels corretos, 0 duplicatas em 1.247 linhas. Após reiniciar todos os agentes: 0 erros, 0 duplicatas e fluxo contínuo (~630 linhas/min, sem lacuna).
+
+**Trade-offs.**
+- O grupo 0 dá leitura a qualquer arquivo `root`-group dentro da montagem. Por isso ela é restrita a `/var/log/pods` e somente leitura.
+- O init container roda como uid 0 com uma única capability, pelo tempo de um `chown`. É o mesmo padrão do `istio-init`.

@@ -92,22 +92,36 @@ Terraform é dono da **plataforma** (cluster, observabilidade, mesh, Argo CD) e 
 
 ## Pré-requisitos
 
-| Ferramenta | Versão testada |
-|------------|----------------|
-| Docker     | 29.x           |
-| kind       | 0.31           |
-| Terraform  | ≥ 1.5          |
-| kubectl    | 1.33           |
-| helm       | 3.x / 4.x      |
-| curl, python3 | usados pelo `Makefile` e pelo `make verify` |
+| Ferramenta | Versão mínima | Versão testada |
+|------------|---------------|----------------|
+| Docker (com `docker compose`) | — | 29.x |
+| kind       | 0.24 (NetworkPolicy no kindnet) | 0.31 |
+| Terraform  | 1.5 | 1.5.7 |
+| kubectl    | — | 1.33 |
+| helm       | 3.0 | 3.22 / 4.0 |
+| curl, python3 | — | usados pelo `Makefile` e pelo `make verify` |
 
 Recursos: ~8 GB de RAM livres (o ambiente completo usa ~6,5 GB), 4 CPUs, acesso à internet (GitHub e GHCR) e as portas 80, 7070 e 7071 livres no host.
+
+### Verificar e instalar
+
+```bash
+make preflight   # diagnostica tudo de uma vez; não instala nada
+make tools       # opcional: instala kind, kubectl, helm e terraform em .bin/
+```
+
+- **`make preflight`** roda sozinho no início do `make up`. Lista **todas** as pendências de uma vez (ferramenta ausente ou antiga, Docker parado, `docker compose`, portas ocupadas, memória do Docker, limites de `inotify`), cada uma com o comando para resolver. Portas já usadas pelo próprio ambiente não contam como problema.
+- **`make tools`** é opcional e só roda quando você pede. Baixa versões **fixadas** de kind, kubectl, helm e terraform para a pasta `.bin/` do projeto, **verifica o SHA-256** de cada download contra o arquivo de checksums publicado pelo próprio projeto (aborta se não bater), sem `sudo` e sem alterar o sistema. O `Makefile` usa `.bin/` antes do `PATH`. O Docker fica de fora: é instalação de sistema, e o `make preflight` mostra como instalar.
+
+Por que o `make up` **não instala nada sozinho**: instalar exige `sudo` ou executar binários baixados da internet. Fazer isso escondido num comando de deploy tira o controle de quem roda e é o tipo de prática que um time de segurança reprova. O diagnóstico é automático; a instalação é uma decisão explícita.
 
 **Linux:** o kind multi-nó precisa de limites maiores de `inotify` (o `make preflight` verifica):
 
 ```bash
 sudo sysctl -w fs.inotify.max_user_watches=524288 fs.inotify.max_user_instances=512
 ```
+
+**Windows (WSL2):** rode o projeto dentro da distribuição Linux, com o Docker Desktop (*Settings → Resources → WSL integration* ativado para a distro) ou o Docker Engine instalado no próprio WSL. As URLs `*.localhost` abrem normalmente no browser do Windows. Se o Docker tiver menos de 8 GB, ajuste a memória no Docker Desktop ou no `%UserProfile%\.wslconfig`.
 
 ## Como usar
 
@@ -360,6 +374,8 @@ Para mudar o peso do canary, altere `canary_weight` em `terraform.tfvars` e rode
 
 | Sintoma | Causa | Solução |
 |---|---|---|
+| `make preflight` aponta `MISSING` em kind, kubectl, helm ou terraform | Ferramenta não instalada | `make tools` (versões fixadas, checksum verificado, em `.bin/`) ou o link indicado na saída |
+| `make preflight` aponta `docker daemon not reachable` | Docker parado, usuário fora do grupo `docker` ou integração WSL desligada | Siga a dica impressa pelo `make preflight` |
 | `make preflight` falha por `inotify` | Limite do kernel baixo para kind multi-nó | `sudo sysctl -w fs.inotify.max_user_watches=524288 fs.inotify.max_user_instances=512` |
 | Depois de **suspender o notebook** por muitas horas, a app responde `503` (`upstream connect error ... connection termination`) e o `make verify` aponta certificados vencidos | O sidecar renova o certificado mTLS (validade de 24 h) na metade da validade, com um relógio que para durante a suspensão; o certificado vence pelo relógio real. Pods antigos acordam com certificado vencido e os novos os recusam (`SSLV3_ALERT_CERTIFICATE_EXPIRED`) | `make mesh-refresh` (rolling restart do gateway e da app, que recebem certificados novos) |
 | `terraform` fora do `make` falha com `InvalidToken` | Credenciais AWS da shell (`AWS_SESSION_TOKEN`) vão para o backend local | Use sempre os alvos do `make`, que isolam essas variáveis |

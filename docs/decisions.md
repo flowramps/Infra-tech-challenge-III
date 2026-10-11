@@ -192,3 +192,16 @@ Três perguntas, três comportamentos:
 **Trade-offs.**
 - O grupo 0 dá leitura a qualquer arquivo `root`-group dentro da montagem. Por isso ela é restrita a `/var/log/pods` e somente leitura.
 - O init container roda como uid 0 com uma única capability, pelo tempo de um `chown`. É o mesmo padrão do `istio-init`.
+
+## 15. Pré-requisitos: diagnosticar sempre, instalar só quando pedido
+
+**Contexto.** Numa máquina nova, o `make up` parava na primeira ferramenta ausente, sem dizer o que mais faltava nem como instalar.
+
+**Decisão.** Separar diagnóstico de instalação:
+
+- `make preflight` (automático) verifica ferramentas e versões mínimas, Docker, portas, memória e `inotify`, e reporta **todas** as pendências de uma vez, com o comando para resolver cada uma.
+- `make tools` (opt-in) instala versões fixadas de kind, kubectl, helm e terraform em `.bin/`, verificando o SHA-256 contra os checksums oficiais. Sem `sudo` e sem tocar no sistema; o `Makefile` coloca `.bin/` à frente do `PATH`.
+
+**Por que não instalar automaticamente.** Instalar exige `sudo` ou executar binários baixados. Escondido num comando de deploy, isso tira o controle de quem roda, varia por sistema operacional e é um vetor de supply chain. Com o opt-in, a instalação é explícita, reproduzível (versões fixadas) e verificada (checksum).
+
+**Trade-offs.** O Docker continua manual, porque é instalação de sistema. A verificação usa o checksum publicado no mesmo servidor do binário; assinaturas (GPG da HashiCorp, cosign) seriam a próxima camada.

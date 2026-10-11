@@ -112,7 +112,11 @@ Uma imagem, três serviços (`frontend → orders → inventory`), papel definid
 - **SLIs** a partir das métricas da aplicação: disponibilidade (não-5xx) e latência (< 500 ms).
 - **SLOs**: 99,5% de disponibilidade e 99% das requisições abaixo de 500 ms, janela de 30 dias.
 - **Alertas multi-window, multi-burn-rate** (SRE Workbook): 14,4x em 1h/5m (crítico) e 6x em 6h/30m (warning). Pegam incidentes rápidos sem alertar por ruído.
-- **Alertmanager** envia para um webhook local (`alert-sink`) que registra cada notificação no Loki. Trocar por Slack/PagerDuty é só mudar o receiver.
+- **Alertmanager com dois canais e roteamento por severidade:**
+  - `webhook` (`alert-sink`) recebe todas as notificações e as registra no Loki; funciona offline e é verificável.
+  - **Telegram** (opcional) recebe só o que é `critical`, que é o que deve acordar alguém. Warnings não vão para o celular, para evitar fadiga de alertas.
+  - O token do bot entra por `.env` (ignorado pelo Git) → variável sensível do Terraform → Secret montado no Alertmanager (`bot_token_file`). Ele fica no Terraform state, outro motivo para o state ter criptografia e acesso por role em produção (seção 2).
+  - Trocar ou somar Slack/PagerDuty é só mais um receiver e uma rota.
 - `make chaos` eleva a taxa de erro do inventory para 50% via Terraform (sem drift) e dispara os alertas; `make chaos-off` restaura.
 
 ## 10. Custo

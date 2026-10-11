@@ -282,10 +282,22 @@ make chaos       # inventory passa a falhar 50% (Terraform -> Application -> Arg
 make chaos-off   # restaura o valor do tfvars
 ```
 
+### Alertas no Telegram (opcional)
+
+Alertas `critical` podem ir também para o Telegram; os demais ficam só no alert-sink.
+
+1. Crie um bot com o **@BotFather** (`/newbot`).
+2. `cp .env.example .env` e cole o token em `TF_VAR_telegram_bot_token`. O `.env` é ignorado pelo Git.
+3. Envie qualquer mensagem ao bot e rode `make telegram-chat-id`; copie o valor para `TF_VAR_telegram_chat_id`.
+4. `make apply`.
+
+O token vira um Secret do Kubernetes, lido pelo Alertmanager como arquivo; não fica no Git nem nos values do Helm.
+
 Para testar só o caminho de notificação, sem esperar uma regra disparar:
 
 ```bash
-make test-alert  # envia um alerta direto ao Alertmanager; em ~30 s ele chega ao alert-sink
+make test-alert                    # alerta warning: chega ao alert-sink em ~30 s
+make test-alert SEVERITY=critical  # alerta critical: também chega ao Telegram, se configurado
 ```
 
 Para mudar o peso do canary, altere `canary_weight` em `terraform.tfvars` e rode `make apply`.

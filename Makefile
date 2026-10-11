@@ -2,6 +2,10 @@ SHELL := /usr/bin/env bash
 .SHELLFLAGS := -euo pipefail -c
 .DEFAULT_GOAL := help
 
+# Optional local secrets (see .env.example), exported to Terraform as TF_VAR_*.
+-include .env
+export TF_VAR_telegram_bot_token TF_VAR_telegram_chat_id
+
 ENV          ?= local
 TF_DIR       := terraform
 TF_VARS      := environments/$(ENV)/terraform.tfvars
@@ -92,12 +96,20 @@ info: ## Print the UI addresses and credentials
 verify: ## Smoke test: app, metrics, logs, traces and mesh
 	./scripts/verify.sh
 
+.PHONY: telegram-chat-id
+telegram-chat-id: ## Show the chat id of the last message sent to the Telegram bot
+	@test -n "$(TF_VAR_telegram_bot_token)" || { echo "Set TF_VAR_telegram_bot_token in .env first" >&2; exit 1; }
+	@curl -sf "https://api.telegram.org/bot$(TF_VAR_telegram_bot_token)/getUpdates" | \
+	  python3 -c 'import json,sys; u=json.load(sys.stdin)["result"]; \
+	  print("Send a message to the bot first" if not u else "TF_VAR_telegram_chat_id=%s  (%s)" % (u[-1]["message"]["chat"]["id"], u[-1]["message"]["chat"].get("first_name") or u[-1]["message"]["chat"].get("title")))'
+
+SEVERITY ?= warning
 .PHONY: test-alert
-test-alert: ## Send a test alert through Alertmanager to the webhook receiver
+test-alert: ## Send a test alert through Alertmanager (SEVERITY=critical also pages Telegram)
 	@curl -sf -X POST $$(terraform -chdir=$(TF_DIR) output -json urls | \
 	  python3 -c 'import json,sys; print(json.load(sys.stdin)["alertmanager"])')/api/v2/alerts \
 	  -H 'Content-Type: application/json' \
-	  -d '[{"labels":{"alertname":"DemoAlert","severity":"warning","namespace":"sample-app"},"annotations":{"summary":"Test alert sent by make test-alert"}}]' \
+	  -d '[{"labels":{"alertname":"DemoAlert","severity":"$(SEVERITY)","namespace":"sample-app"},"annotations":{"summary":"Test alert sent by make test-alert"}}]' \
 	  && echo "DemoAlert sent. In ~30s: Grafana > Explore > Loki > {namespace=\"monitoring\", app=\"alert-sink\"} |= \"DemoAlert\"" \
 	  && echo "Sending it again while it is active (~5 min) does not notify twice: Alertmanager deduplicates."
 

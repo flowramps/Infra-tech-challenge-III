@@ -58,6 +58,19 @@ variable "storage_size" {
   }
 }
 
+variable "telegram" {
+  description = "Optional Telegram channel for critical alerts. Leave the token empty to disable it."
+  type = object({
+    bot_token = string
+    chat_id   = string
+  })
+  default = {
+    bot_token = ""
+    chat_id   = ""
+  }
+  sensitive = true
+}
+
 variable "cost_per_cpu_hour" {
   description = "Reference price (USD) of one vCPU hour, used by the cost dashboard."
   type        = number

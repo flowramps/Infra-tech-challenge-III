@@ -41,6 +41,10 @@ module "observability" {
     alertmanager = local.urls.alertmanager
   }
   retention = var.retention
+  telegram = {
+    bot_token = var.telegram_bot_token
+    chat_id   = var.telegram_chat_id
+  }
 }
 
 module "service_mesh" {

@@ -67,6 +67,19 @@ variable "inventory_fault_rate" {
   default     = 0.02
 }
 
+variable "telegram_bot_token" {
+  description = "Telegram bot token for critical alerts (optional; set TF_VAR_telegram_bot_token, e.g. via .env)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "telegram_chat_id" {
+  description = "Telegram chat that receives critical alerts."
+  type        = string
+  default     = ""
+}
+
 variable "gitops_repo_url" {
   description = "Git repository Argo CD syncs the application from."
   type        = string

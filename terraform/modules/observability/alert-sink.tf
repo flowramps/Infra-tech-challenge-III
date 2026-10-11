@@ -42,6 +42,11 @@ resource "kubernetes_deployment_v1" "alert_sink" {
             name  = "LOG_IGNORE_PATH"
             value = "/healthz"
           }
+          # One JSON document per line: each notification is a single Loki entry.
+          env {
+            name  = "LOG_WITHOUT_NEWLINE"
+            value = "true"
+          }
 
           port {
             name           = "http"

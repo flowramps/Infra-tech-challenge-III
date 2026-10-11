@@ -282,6 +282,12 @@ make chaos       # inventory passa a falhar 50% (Terraform -> Application -> Arg
 make chaos-off   # restaura o valor do tfvars
 ```
 
+Para testar só o caminho de notificação, sem esperar uma regra disparar:
+
+```bash
+make test-alert  # envia um alerta direto ao Alertmanager; em ~30 s ele chega ao alert-sink
+```
+
 Para mudar o peso do canary, altere `canary_weight` em `terraform.tfvars` e rode `make apply`.
 
 ## Estrutura do repositório

@@ -92,6 +92,15 @@ info: ## Print the UI addresses and credentials
 verify: ## Smoke test: app, metrics, logs, traces and mesh
 	./scripts/verify.sh
 
+.PHONY: test-alert
+test-alert: ## Send a test alert through Alertmanager to the webhook receiver
+	@curl -sf -X POST $$(terraform -chdir=$(TF_DIR) output -json urls | \
+	  python3 -c 'import json,sys; print(json.load(sys.stdin)["alertmanager"])')/api/v2/alerts \
+	  -H 'Content-Type: application/json' \
+	  -d '[{"labels":{"alertname":"DemoAlert","severity":"warning","namespace":"sample-app"},"annotations":{"summary":"Test alert sent by make test-alert"}}]' \
+	  && echo "DemoAlert sent. In ~30s: Grafana > Explore > Loki > {namespace=\"monitoring\", app=\"alert-sink\"} |= \"DemoAlert\"" \
+	  && echo "Sending it again while it is active (~5 min) does not notify twice: Alertmanager deduplicates."
+
 .PHONY: chaos
 chaos: ## Make inventory fail 50% of the requests (fires SLO alerts)
 	terraform -chdir=$(TF_DIR) apply $(TF_APP_VARS) -var inventory_fault_rate=0.5 -auto-approve

@@ -113,6 +113,14 @@ test-alert: ## Send a test alert through Alertmanager (SEVERITY=critical also pa
 	  && echo "DemoAlert sent. In ~30s: Grafana > Explore > Loki > {namespace=\"monitoring\", app=\"alert-sink\"} |= \"DemoAlert\"" \
 	  && echo "Sending it again while it is active (~5 min) does not notify twice: Alertmanager deduplicates."
 
+.PHONY: mesh-refresh
+mesh-refresh: ## Re-issue mesh mTLS certificates (rolling restart), e.g. after the host was suspended
+	@ctx=$$(terraform -chdir=$(TF_DIR) output -raw kubeconfig_context); \
+	kubectl --context $$ctx -n istio-ingress rollout restart deployment && \
+	kubectl --context $$ctx -n sample-app rollout restart deployment && \
+	kubectl --context $$ctx -n istio-ingress rollout status deployment --timeout=300s && \
+	kubectl --context $$ctx -n sample-app rollout status deployment --timeout=300s
+
 .PHONY: chaos
 chaos: ## Make inventory fail 50% of the requests (fires SLO alerts)
 	terraform -chdir=$(TF_DIR) apply $(TF_APP_VARS) -var inventory_fault_rate=0.5 -auto-approve

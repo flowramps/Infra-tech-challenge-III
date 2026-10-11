@@ -30,43 +30,45 @@ make info   # mostra as URLs e as credenciais
 ## Arquitetura
 
 ```mermaid
-flowchart LR
-    user([Browser]) -->|"*.localhost:80"| gw
+flowchart TB
+    user([Browser]) -->|"*.localhost :80"| gw
+    gh[(GitHub)]
 
-    subgraph host[Host / Docker]
-        state[(S3 local<br/>Terraform state)]
-        subgraph kind[kind cluster: 1 control plane + 2 workers]
-            subgraph istio[istio-system / istio-ingress]
-                istiod[istiod x2]
-                gw[Ingress Gateway x2]
-            end
+    subgraph kind["kind cluster"]
+        nodes["1 control plane<br/>2 workers"]
+        subgraph mesh["Istio"]
+            gw[Ingress Gateway]
+            istiod["istiod<br/>mTLS STRICT"]
+        end
+        argo[Argo CD]
 
-            subgraph app[sample-app: mTLS STRICT + NetworkPolicy default-deny]
-                lg[loadgen] --> fe
-                fe[frontend] -->|mTLS| ord[orders v1 90%<br/>orders v2 10%]
-                ord -->|mTLS + retries<br/>circuit breaker| inv[inventory]
-            end
+        subgraph app["sample-app"]
+            direction LR
+            lg[loadgen] --> fe[frontend]
+            fe --> ord["orders<br/>v1 90% / v2 10%"]
+            ord -->|"retries +<br/>circuit breaker"| inv[inventory]
+        end
 
-            subgraph mon[monitoring]
-                prom[Prometheus] --> am[Alertmanager] --> sink[alert-sink<br/>todos os alertas]
-                alloy[Alloy DaemonSet<br/>lê /var/log/pods] --> loki[Loki]
-                tempo[Tempo] -->|remote write<br/>service graph| prom
-                graf[Grafana]
-            end
-
-            argocd[Argo CD]
+        subgraph mon["monitoring"]
+            direction LR
+            alloy["Alloy<br/>/var/log/pods"] --> loki[Loki]
+            tempo[Tempo] -->|service graph| prom[Prometheus]
+            prom --> am[Alertmanager]
+            am --> sink[alert-sink]
+            graf[Grafana]
         end
     end
 
+    tg([Telegram])
+    state[("Terraform state<br/>VersityGW + Explorer<br/>(fora do cluster)")]
+
     gw --> fe
-    gw -.->|grafana / prometheus /<br/>alertmanager / argocd .localhost| graf & argocd
-    am -->|critical| tg([Telegram])
-    argocd -->|pull| gh[(GitHub)]
-    argocd -->|sync| app
-    app -.->|metrics :9464 / Envoy :15090| prom
-    app -.->|logs| alloy
-    app -.->|traces OTLP app + Envoy| tempo
-    graf --> prom & loki & tempo
+    gw -.->|UIs por hostname| graf
+    gh -->|pull| argo
+    argo -->|sync| app
+    app -.->|"métricas, logs, traces"| mon
+    graf --> loki & tempo & prom
+    am -->|critical| tg
 ```
 
 **Fluxo dos três sinais:**

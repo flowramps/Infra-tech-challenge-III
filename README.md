@@ -188,6 +188,7 @@ Alerting
 Security
   PASS Service-to-service traffic uses mutual TLS
   PASS NetworkPolicy blocks inventory -> frontend
+  PASS Mesh mTLS certificates are not expired (fix: make mesh-refresh)
   PASS Mesh-wide PeerAuthentication is STRICT
   PASS RBAC: developers can scale deployments
   PASS RBAC: developers cannot read secrets

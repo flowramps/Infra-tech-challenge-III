@@ -29,6 +29,18 @@ Cada decisão segue o formato: **contexto → decisão → trade-off**.
 
 **Trade-offs.** Sem state locking (single user local). Em ambiente compartilhado: S3 com `use_lockfile` (Terraform ≥ 1.10) ou DynamoDB. As credenciais do backend são locais, vinculadas a `127.0.0.1`, e podem ser sobrescritas por `TFSTATE_ACCESS_KEY`/`TFSTATE_SECRET_KEY`.
 
+> **Nota: credenciais em produção.** O acesso ao state usa uma access key fixa **apenas por limitação do ambiente local**: o gateway S3 não implementa IAM nem STS, então não há como emitir credenciais temporárias. A chave abre só um bucket local, publicado em `127.0.0.1`. Emuladores como o Floci respondem à API de `AssumeRole`, mas não avaliam políticas IAM nem trust policies; usá-los aqui daria a aparência do controle sem o controle de fato.
+>
+> **Em produção, o caminho é usar roles com o mínimo privilégio**, nunca usuários técnicos (service accounts do IAM) com access keys de longa duração. Uma access key vazada dá acesso de qualquer lugar até ser rotacionada; uma role emite credenciais temporárias, só para quem a trust policy autoriza, com cada sessão identificada na auditoria.
+>
+> | Quem acessa o state | Como se autentica | Credencial guardada |
+> |---|---|---|
+> | Pessoas | AWS IAM Identity Center (SSO) → role `terraform-operator` | Nenhuma |
+> | Pipeline (GitHub Actions) | OIDC do GitHub → `AssumeRoleWithWebIdentity`, trust policy restrita ao repositório e à branch `main` | Nenhuma |
+> | Workloads no cluster | IRSA ou EKS Pod Identity | Nenhuma |
+>
+> Cada role recebe só o necessário: leitura e escrita na chave de state do seu ambiente, uso da chave KMS do bucket e, quando aplicável, o lock. No bucket: policy que aceita apenas essas roles, criptografia com KMS, versionamento, bloqueio de acesso público e locking com `use_lockfile`.
+
 ## 3. Organização do Terraform
 
 Um root module enxuto que compõe quatro módulos com interfaces explícitas:

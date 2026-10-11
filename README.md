@@ -303,6 +303,7 @@ Para mudar o peso do canary, altere `canary_weight` em `terraform.tfvars` e rode
 
 - Os backends de observabilidade rodam com 1 réplica e filesystem local. Em produção: modos distribuídos com object storage (S3/GCS).
 - O state local não tem locking. Em equipe: S3 com `use_lockfile` ou DynamoDB.
+- O state local usa access key fixa porque o backend local não tem IAM/STS. **Em produção: roles com o mínimo privilégio e credenciais temporárias** (SSO para pessoas, OIDC para o pipeline, IRSA/Pod Identity para workloads), nunca usuários técnicos com access keys. Ver [decisões, seção 2](docs/decisions.md#2-remote-state-em-s3-local-versity-s3-gateway).
 - O custo é uma estimativa por requests com preço de referência, não a fatura de um provedor.
 - O `make up` depende do GitHub e do GHCR (o Argo CD sincroniza do repositório público e os nós baixam a imagem publicada).
 

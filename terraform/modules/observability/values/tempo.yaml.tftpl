@@ -1,9 +1,13 @@
 tempo:
   retention: ${retention}
   reportingEnabled: false
+  # At 1Gi the process ran at the limit and was OOMKilled when queries read
+  # blocks back. GOMEMLIMIT makes the Go GC work harder before the cgroup
+  # limit is reached; it replaces the old memory ballast technique.
+  memBallastSizeMbs: 0
   resources:
-    requests: { cpu: 100m, memory: 256Mi }
-    limits: { cpu: "1", memory: 1Gi }
+    requests: { cpu: 100m, memory: 512Mi }
+    limits: { cpu: "1", memory: 2Gi }
   # Blocks go to the in-cluster object store (trace-storage.tf); the WAL
   # stays on the local volume. Credentials come from a Secret through env
   # vars, expanded by -config.expand-env.
@@ -26,6 +30,8 @@ tempo:
   extraArgs:
     config.expand-env: true
   extraEnv:
+    - name: GOMEMLIMIT
+      value: "1600MiB"
     - name: S3_ACCESS_KEY
       valueFrom:
         secretKeyRef:

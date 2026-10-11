@@ -216,5 +216,6 @@ Três perguntas, três comportamentos:
 - O gateway roda sem root, com sistema de arquivos somente leitura e o bucket criado como diretório antes de subir.
 - Blocos cortados a cada 5 min (`max_block_duration`): chegam rápido ao storage e o ingester segura menos memória.
 - `make verify` confere que a listagem de blocos não registrou erros nos últimos 15 min.
+- **Memória:** com 1 GiB o Tempo já operava no limite (picos de ~1.020 MiB) e foi morto por falta de memória (OOMKilled) ao ler blocos de volta. Limite de 2 GiB, `GOMEMLIMIT=1600MiB` (o coletor de lixo do Go trabalha antes do limite do cgroup) e o antigo *memory ballast* desligado. Pico medido depois do ajuste: 913 MiB, sem reinícios.
 
 **Trade-offs.** Mais um componente para operar. Em produção, o storage seria gerenciado (S3/GCS) e acessado por role (IRSA/Workload Identity), sem chave fixa.

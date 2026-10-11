@@ -355,6 +355,15 @@ Para mudar o peso do canary, altere `canary_weight` em `terraform.tfvars` e rode
         └── sample-app/          # namespace, RBAC, Application do Argo CD + chart da aplicação
 ```
 
+## Solução de problemas
+
+| Sintoma | Causa | Solução |
+|---|---|---|
+| `make preflight` falha por `inotify` | Limite do kernel baixo para kind multi-nó | `sudo sysctl -w fs.inotify.max_user_watches=524288 fs.inotify.max_user_instances=512` |
+| Depois de **suspender o notebook** por muitas horas, a app responde `503` (`upstream connect error ... connection termination`) e o `make verify` aponta certificados vencidos | O sidecar renova o certificado mTLS (validade de 24 h) na metade da validade, com um relógio que para durante a suspensão; o certificado vence pelo relógio real. Pods antigos acordam com certificado vencido e os novos os recusam (`SSLV3_ALERT_CERTIFICATE_EXPIRED`) | `make mesh-refresh` (rolling restart do gateway e da app, que recebem certificados novos) |
+| `terraform` fora do `make` falha com `InvalidToken` | Credenciais AWS da shell (`AWS_SESSION_TOKEN`) vão para o backend local | Use sempre os alvos do `make`, que isolam essas variáveis |
+| `*.localhost` não resolve | Ambiente sem suporte a RFC 6761 | `ingress_domain = "127.0.0.1.nip.io"` no `terraform.tfvars` |
+
 ## Limitações conhecidas
 
 - Os backends de observabilidade rodam com 1 réplica e filesystem local. Em produção: modos distribuídos com object storage (S3/GCS).

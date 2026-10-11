@@ -106,6 +106,15 @@ check "Service-to-service traffic uses mutual TLS" \
 check "NetworkPolicy blocks inventory -> frontend" bash -c \
   "! $K -n sample-app exec deploy/inventory-v1 -c app -- python -c \
     \"import httpx; httpx.get('http://frontend:8080/', timeout=3).raise_for_status()\""
+check "Mesh mTLS certificates are not expired (fix: make mesh-refresh)" bash -c '
+  now=$(date -u +%Y-%m-%dT%H:%M:%S)
+  for ns in istio-ingress sample-app; do
+    for p in $('"$K"' -n $ns get pods --field-selector=status.phase=Running -o jsonpath="{.items[*].metadata.name}"); do
+      exp=$('"$K"' -n $ns exec $p -c istio-proxy -- pilot-agent request GET certs 2>/dev/null |
+        python3 -c "import json,sys; c=json.load(sys.stdin)[\"certificates\"]; print(min(x[\"cert_chain\"][0][\"expiration_time\"][:19] for x in c))")
+      [ -n "$exp" ] && [ "$exp" \> "$now" ] || exit 1
+    done
+  done'
 check "Mesh-wide PeerAuthentication is STRICT" bash -c \
   "[ \"\$($K -n istio-system get peerauthentication default -o jsonpath='{.spec.mtls.mode}')\" = STRICT ]"
 check "RBAC: developers can scale deployments" \

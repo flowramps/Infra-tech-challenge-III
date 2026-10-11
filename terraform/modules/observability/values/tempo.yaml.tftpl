@@ -11,11 +11,18 @@ tempo:
           endpoint: "0.0.0.0:4317"
         http:
           endpoint: "0.0.0.0:4318"
-  # Derive RED metrics and the service graph from spans and push them to
-  # Prometheus, so Grafana can draw the service map.
+  # Metrics generator:
+  #   service-graphs, span-metrics -> pushed to Prometheus (service map, RED)
+  #   local-blocks -> serves TraceQL metrics queries (`{...} | rate()`), used by
+  #                   Grafana Traces Drilldown
   metricsGenerator:
     enabled: true
     remoteWriteUrl: ${prometheus_remote_write_url}
+    processor:
+      local_blocks:
+        # Keep client spans too (Envoy and httpx), not only server spans.
+        filter_server_spans: false
+        flush_to_storage: true
     storage:
       path: /var/tempo/generator/wal
       remote_write:
@@ -29,6 +36,7 @@ tempo:
         processors:
           - service-graphs
           - span-metrics
+          - local-blocks
 
 persistence:
   enabled: true

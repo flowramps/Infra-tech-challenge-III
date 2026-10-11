@@ -1,0 +1,78 @@
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # An unchanged image becomes vulnerable on its own: new CVEs are published
+  # against dependencies that are already there. The weekly run catches them.
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write   # upload SARIF to the Security tab
+
+jobs:
+  secrets:
+    name: Secrets (gitleaks)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # Blocking: a leaked credential is always actionable. Full history is
+      # scanned because removing a secret in a later commit does not revoke it.
+      - name: Scan git history
+        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 git /repo --redact --verbose
+
+  iac:
+    name: IaC misconfiguration (Trivy)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      # Terraform, Helm charts, Kubernetes manifests and the Dockerfile.
+      # Reported, not blocking: findings are triaged and either fixed or
+      # accepted with a justification in .trivyignore.
+      - name: Scan configuration
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          trivyignores: .trivyignore
+          format: sarif
+          output: trivy-iac.sarif
+          exit-code: "0"
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-iac.sarif
+          category: trivy-iac
+
+  image:
+    name: Image vulnerabilities (Trivy)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build
+        run: docker build -t sample-app:scan app
+      # Reported, not blocking: base images carry OS CVEs without a published
+      # fix. The release gate in cd.yml blocks fixable CRITICAL ones.
+      - name: Scan image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: sample-app:scan
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-image.sarif
+          exit-code: "0"
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image

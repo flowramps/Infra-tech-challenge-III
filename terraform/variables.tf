@@ -14,14 +14,16 @@ variable "worker_count" {
   default     = 2
 }
 
-variable "host_ports" {
-  description = "Host ports (bound to 127.0.0.1) that expose the cluster entry points."
-  type = object({
-    ingress      = number
-    grafana      = number
-    prometheus   = number
-    alertmanager = number
-  })
+variable "ingress_domain" {
+  description = "Domain of the UIs (<name>.<domain>). *.localhost resolves to 127.0.0.1 without DNS; 127.0.0.1.nip.io is the public DNS alternative."
+  type        = string
+  default     = "localhost"
+}
+
+variable "ingress_host_port" {
+  description = "Host port (127.0.0.1) of the ingress gateway."
+  type        = number
+  default     = 80
 }
 
 variable "chart_versions" {
@@ -33,6 +35,8 @@ variable "chart_versions" {
     alloy                 = string
     metrics_server        = string
     istio                 = string
+    argo_cd               = string
+    argocd_apps           = string
   })
 }
 
@@ -61,4 +65,28 @@ variable "inventory_fault_rate" {
   description = "Fraction of inventory requests that fail on purpose."
   type        = number
   default     = 0.02
+}
+
+variable "telegram_bot_token" {
+  description = "Telegram bot token for critical alerts (optional; set TF_VAR_telegram_bot_token, e.g. via .env)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "telegram_chat_id" {
+  description = "Telegram chat that receives critical alerts."
+  type        = string
+  default     = ""
+}
+
+variable "gitops_repo_url" {
+  description = "Git repository Argo CD syncs the application from."
+  type        = string
+}
+
+variable "gitops_revision" {
+  description = "Branch Argo CD tracks (the Makefile passes the checked-out branch)."
+  type        = string
+  default     = "main"
 }

@@ -5,15 +5,23 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
+# Runner image pinned on purpose: ubuntu-latest moves to a new OS release
+# without notice. Third-party actions are pinned by commit SHA; first-party
+# (actions/*, github/*) by major version.
 jobs:
   terraform:
-    runs-on: ubuntu-latest
+    name: Terraform fmt and validate
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: 1.9.8
       - name: Format
@@ -24,10 +32,11 @@ jobs:
           terraform -chdir=terraform validate
 
   helm:
-    runs-on: ubuntu-latest
+    name: Helm lint and render
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
       - name: Lint charts
         run: helm lint terraform/modules/sample-app/chart terraform/modules/service-mesh/chart
       - name: Render charts
@@ -36,8 +45,16 @@ jobs:
           helm template mesh-config terraform/modules/service-mesh/chart > /dev/null
 
   app:
-    runs-on: ubuntu-latest
+    name: Build and smoke test image
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build image
         run: docker build -t sample-app:ci app
+      # The image must start and answer, not only build.
+      - name: Smoke test
+        run: |
+          docker run -d --rm --name app-ci -p 8080:8080 sample-app:ci
+          for _ in $(seq 1 30); do curl -sf localhost:8080/healthz >/dev/null && break; sleep 1; done
+          curl -sf localhost:8080/ | tee /dev/stderr | grep -q '"service"'
+          docker stop app-ci

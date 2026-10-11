@@ -5,6 +5,9 @@ locals {
   alert_sink  = "alert-sink"
   dashboards  = fileset("${path.module}/dashboards", "*.json")
   common_helm = { timeout = 900, wait = true }
+
+  telegram_enabled = nonsensitive(var.telegram.bot_token != "")
+  telegram_secret  = "alertmanager-telegram"
 }
 
 resource "kubernetes_namespace_v1" "this" {
@@ -31,6 +34,23 @@ resource "kubernetes_secret_v1" "grafana_admin" {
   data = {
     admin-user     = "admin"
     admin-password = random_password.grafana_admin.result
+  }
+}
+
+# --- Alerting channel ----------------------------------------------------------
+# Mounted by Alertmanager under /etc/alertmanager/secrets/<name>/. The token
+# ends up in the Terraform state, which is why the state backend must be
+# access-controlled and encrypted in production.
+resource "kubernetes_secret_v1" "telegram" {
+  count = local.telegram_enabled ? 1 : 0
+
+  metadata {
+    name      = local.telegram_secret
+    namespace = kubernetes_namespace_v1.this.metadata[0].name
+  }
+
+  data = {
+    bot-token = var.telegram.bot_token
   }
 }
 
@@ -64,15 +84,20 @@ resource "helm_release" "kube_prometheus_stack" {
   timeout    = local.common_helm.timeout
   wait       = local.common_helm.wait
 
+  depends_on = [kubernetes_secret_v1.telegram]
+
   values = [templatefile("${path.module}/values/kube-prometheus-stack.yaml.tftpl", {
     storage_class           = var.storage_class
     prometheus_retention    = var.retention.metrics
     prometheus_storage_size = var.storage_size.prometheus
-    prometheus_node_port    = var.node_ports.prometheus
-    alertmanager_node_port  = var.node_ports.alertmanager
-    grafana_node_port       = var.node_ports.grafana
+    prometheus_url          = var.external_urls.prometheus
+    alertmanager_url        = var.external_urls.alertmanager
+    grafana_url             = var.external_urls.grafana
     grafana_admin_secret    = kubernetes_secret_v1.grafana_admin.metadata[0].name
     alert_webhook_url       = "http://${local.alert_sink}.${var.namespace}.svc.cluster.local:8080/alerts"
+    telegram_enabled        = local.telegram_enabled
+    telegram_secret         = local.telegram_secret
+    telegram_chat_id        = nonsensitive(var.telegram.chat_id)
     loki_url                = local.loki_url
     tempo_url               = local.tempo_url
   })]

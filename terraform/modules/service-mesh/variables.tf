@@ -14,6 +14,17 @@ variable "tracing_sampling_percentage" {
   default     = 100
 }
 
+variable "platform_routes" {
+  description = "Platform UIs published through the ingress gateway, routed by hostname."
+  type = list(object({
+    name    = string
+    host    = string
+    service = string
+    port    = number
+  }))
+  default = []
+}
+
 variable "ingress_node_port" {
   description = "NodePort of the ingress gateway HTTP listener."
   type        = number

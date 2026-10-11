@@ -5,3 +5,15 @@ tracing:
 
 mtls:
   mode: STRICT
+
+# Shared HTTP entry point. Workloads attach their own VirtualServices to it;
+# the platform UIs are listed here.
+ingress:
+  namespace: istio-ingress
+  selector:
+    istio: ingress
+  routes: []
+  #  - name: grafana
+  #    host: grafana.localhost
+  #    service: kube-prometheus-stack-grafana.monitoring.svc.cluster.local
+  #    port: 80

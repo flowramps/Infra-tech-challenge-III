@@ -29,9 +29,16 @@ spec:
         # Prometheus is outside the mesh: the metrics port bypasses the sidecar
         # so it can be scraped in plain HTTP while business traffic stays mTLS.
         traffic.sidecar.istio.io/excludeInboundPorts: "9464"
+        # Spans go straight to Tempo (outside the mesh); otherwise Envoy would
+        # trace the telemetry export itself and pollute the traces.
+        traffic.sidecar.istio.io/excludeOutboundPorts: "4317"
     spec:
       serviceAccountName: {{ $svc.name }}
       terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname

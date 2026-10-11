@@ -1,0 +1,5 @@
+# Accepted Trivy findings. Every entry needs the reason it is accepted and the
+# date it must be reviewed again, e.g.:
+#
+#   # <reason> (review by YYYY-MM-DD)
+#   AVD-KSV-0000

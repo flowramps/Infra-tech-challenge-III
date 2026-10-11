@@ -1,0 +1,51 @@
+# The UI is published in plain HTTP through the Istio ingress gateway,
+# so the server does not terminate TLS itself.
+configs:
+  params:
+    server.insecure: true
+  cm:
+    # Poll Git every minute (no inbound webhook can reach a local cluster).
+    timeout.reconciliation: 60s
+
+# Components not used: SSO and notifications.
+dex:
+  enabled: false
+notifications:
+  enabled: false
+
+controller:
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 1Gi }
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+
+repoServer:
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+
+server:
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+
+applicationSet:
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits: { cpu: 200m, memory: 128Mi }
+
+redis:
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits: { cpu: 200m, memory: 128Mi }

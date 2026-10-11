@@ -19,6 +19,10 @@ spec:
         app.kubernetes.io/name: loadgen
     spec:
       automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: loadgen
           image: {{ .Values.loadgen.image }}

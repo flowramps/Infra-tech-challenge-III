@@ -1,13 +1,3 @@
-locals {
-  # Content hash of the application: a code change produces a new tag, which
-  # rebuilds the image and triggers a rolling update.
-  image_tag = substr(sha1(join("", [
-    for f in sort(fileset(var.source_dir, "**")) : filesha1("${var.source_dir}/${f}")
-  ])), 0, 12)
-  image_repository = "sample-app"
-  image            = "${local.image_repository}:${local.image_tag}"
-}
-
 resource "kubernetes_namespace_v1" "this" {
   metadata {
     name = var.namespace
@@ -17,39 +7,99 @@ resource "kubernetes_namespace_v1" "this" {
   }
 }
 
-# kind nodes cannot pull from the local Docker daemon, so the image is built
-# on the host and loaded straight into every node.
-resource "terraform_data" "image" {
-  triggers_replace = [local.image, var.cluster_name]
-
-  provisioner "local-exec" {
-    command = "docker build -t ${local.image} ${var.source_dir} && kind load docker-image ${local.image} --name ${var.cluster_name}"
-  }
-}
-
-resource "helm_release" "this" {
-  name      = "sample-app"
-  namespace = kubernetes_namespace_v1.this.metadata[0].name
-  chart     = "${path.module}/chart"
-  wait      = true
-  timeout   = 600
+# Least privilege boundary for the application. Kept in its own release so
+# that on destroy the Application (and its cascading deletion) goes first: an
+# Application cannot finish deleting once its project is gone.
+resource "helm_release" "argocd_project" {
+  name       = "sample-app-project"
+  namespace  = var.argocd_namespace
+  repository = "https://argoproj.github.io/argo-helm"
+  chart      = "argocd-apps"
+  version    = var.argocd_apps_chart_version
+  wait       = true
 
   values = [yamlencode({
-    image = {
-      repository = local.image_repository
-      tag        = local.image_tag
+    projects = {
+      sample-app = {
+        namespace   = var.argocd_namespace
+        description = "Sample application: one repository, one namespace, no cluster-scoped resources."
+        sourceRepos = [var.repo_url]
+        destinations = [{
+          server    = "https://kubernetes.default.svc"
+          namespace = kubernetes_namespace_v1.this.metadata[0].name
+        }]
+        clusterResourceWhitelist = []
+        namespaceResourceWhitelist = [{
+          group = "*"
+          kind  = "*"
+        }]
+      }
     }
-    otlpEndpoint = var.otlp_endpoint
-    canaryWeight = var.canary_weight
-    faultRate    = var.inventory_fault_rate
-    network = {
-      monitoringNamespace = var.monitoring_namespace
-      ingressNamespace    = var.ingress_namespace
-    }
-    gateway = {
-      selector = var.ingress_gateway_selector
+  })]
+}
+
+# The application is delivered by Argo CD. Terraform only declares *what* to
+# sync (repository, path, revision) and the environment parameters; the image
+# tag lives in the chart values in Git and is bumped by the CD pipeline.
+resource "helm_release" "argocd_application" {
+  name       = "sample-app"
+  namespace  = var.argocd_namespace
+  repository = "https://argoproj.github.io/argo-helm"
+  chart      = "argocd-apps"
+  version    = var.argocd_apps_chart_version
+  wait       = true
+
+  values = [yamlencode({
+    applications = {
+      sample-app = {
+        namespace  = var.argocd_namespace
+        project    = "sample-app"
+        finalizers = ["resources-finalizer.argocd.argoproj.io"]
+        source = {
+          repoURL        = var.repo_url
+          targetRevision = var.target_revision
+          path           = var.chart_path
+          helm = {
+            releaseName = "sample-app"
+            valuesObject = {
+              otlpEndpoint = var.otlp_endpoint
+              canaryWeight = var.canary_weight
+              faultRate    = var.inventory_fault_rate
+              network = {
+                monitoringNamespace = var.monitoring_namespace
+                ingressNamespace    = var.ingress_namespace
+              }
+              ingress = {
+                gateway = var.ingress_gateway
+                host    = var.ingress_host
+              }
+            }
+          }
+        }
+        destination = {
+          server    = "https://kubernetes.default.svc"
+          namespace = kubernetes_namespace_v1.this.metadata[0].name
+        }
+        syncPolicy = {
+          # selfHeal reverts manual changes in the cluster: Git is the only
+          # way to change the application.
+          automated = {
+            prune    = true
+            selfHeal = true
+          }
+          syncOptions = ["ServerSideApply=true"]
+          retry = {
+            limit = 5
+            backoff = {
+              duration    = "10s"
+              factor      = 2
+              maxDuration = "3m"
+            }
+          }
+        }
+      }
     }
   })]
 
-  depends_on = [terraform_data.image]
+  depends_on = [helm_release.argocd_project]
 }

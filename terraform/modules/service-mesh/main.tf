@@ -1,5 +1,7 @@
 locals {
   repository = "https://istio-release.storage.googleapis.com/charts"
+  # The gateway chart labels its pods istio=<release name without "istio-">.
+  gateway_selector = { istio = "ingress" }
 }
 
 resource "kubernetes_namespace_v1" "istio_system" {
@@ -123,6 +125,11 @@ resource "helm_release" "mesh_config" {
     tracing = {
       provider           = "tempo"
       samplingPercentage = var.tracing_sampling_percentage
+    }
+    ingress = {
+      namespace = kubernetes_namespace_v1.istio_ingress.metadata[0].name
+      selector  = local.gateway_selector
+      routes    = var.platform_routes
     }
   })]
 

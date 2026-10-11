@@ -34,10 +34,8 @@ prometheus-node-exporter:
     limits: { cpu: 500m, memory: 128Mi }
 
 prometheus:
-  service:
-    type: NodePort
-    nodePort: ${prometheus_node_port}
   prometheusSpec:
+    externalUrl: ${prometheus_url}
     retention: ${prometheus_retention}
     # Pick up ServiceMonitors, PodMonitors and rules from every namespace and
     # release, not only the ones labelled for this Helm release.
@@ -62,9 +60,6 @@ prometheus:
               storage: ${prometheus_storage_size}
 
 alertmanager:
-  service:
-    type: NodePort
-    nodePort: ${alertmanager_node_port}
   config:
     global:
       resolve_timeout: 5m
@@ -78,6 +73,15 @@ alertmanager:
         - receiver: "null"
           matchers:
             - alertname = "InfoInhibitor"
+%{ if telegram_enabled ~}
+        # Only critical alerts page a human; everything is also recorded by
+        # the webhook (continue: true lets the next route match as well).
+        - receiver: telegram
+          matchers:
+            - severity = "critical"
+          continue: true
+        - receiver: webhook
+%{ endif ~}
     inhibit_rules:
       - source_matchers: ['severity = "critical"']
         target_matchers: ['severity =~ "warning|info"']
@@ -88,7 +92,25 @@ alertmanager:
         webhook_configs:
           - url: ${alert_webhook_url}
             send_resolved: true
+%{ if telegram_enabled ~}
+      - name: telegram
+        telegram_configs:
+          # The token is read from a mounted Secret, never stored in values.
+          - bot_token_file: /etc/alertmanager/secrets/${telegram_secret}/bot-token
+            chat_id: ${telegram_chat_id}
+            parse_mode: HTML
+            send_resolved: true
+            message: |-
+              {{ if eq .Status "firing" }}🔥 <b>FIRING</b>{{ else }}✅ <b>RESOLVED</b>{{ end }} · <b>{{ .CommonLabels.alertname }}</b> ({{ .CommonLabels.severity }})
+              {{ range .Alerts }}• {{ or .Labels.app .Labels.namespace "cluster" }}: {{ or .Annotations.summary .Annotations.description }}
+              {{ end }}<a href="{{ .ExternalURL }}">Alertmanager</a>
+%{ endif ~}
   alertmanagerSpec:
+    externalUrl: ${alertmanager_url}
+%{ if telegram_enabled ~}
+    secrets:
+      - ${telegram_secret}
+%{ endif ~}
     resources:
       requests: { cpu: 20m, memory: 64Mi }
       limits: { cpu: 200m, memory: 128Mi }
@@ -106,9 +128,6 @@ grafana:
     existingSecret: ${grafana_admin_secret}
     userKey: admin-user
     passwordKey: admin-password
-  service:
-    type: NodePort
-    nodePort: ${grafana_node_port}
   persistence:
     enabled: true
     storageClassName: ${storage_class}
@@ -117,6 +136,8 @@ grafana:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { cpu: 500m, memory: 512Mi }
   grafana.ini:
+    server:
+      root_url: ${grafana_url}
     analytics:
       check_for_updates: false
       reporting_enabled: false

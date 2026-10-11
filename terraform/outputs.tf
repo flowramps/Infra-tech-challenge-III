@@ -4,13 +4,8 @@ output "kubeconfig_context" {
 }
 
 output "urls" {
-  description = "Entry points published on the host."
-  value = {
-    application  = "http://localhost:${var.host_ports.ingress}"
-    grafana      = "http://localhost:${var.host_ports.grafana}"
-    prometheus   = "http://localhost:${var.host_ports.prometheus}"
-    alertmanager = "http://localhost:${var.host_ports.alertmanager}"
-  }
+  description = "UIs published through the ingress gateway."
+  value       = local.urls
 }
 
 output "grafana_admin_password" {
@@ -19,7 +14,7 @@ output "grafana_admin_password" {
   sensitive   = true
 }
 
-output "sample_app_image" {
-  description = "Application image loaded into the cluster."
-  value       = module.sample_app.image
+output "argocd_application" {
+  description = "Argo CD Application that delivers the sample app."
+  value       = module.sample_app.argocd_application
 }

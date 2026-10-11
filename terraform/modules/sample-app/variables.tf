@@ -4,13 +4,30 @@ variable "namespace" {
   default     = "sample-app"
 }
 
-variable "cluster_name" {
-  description = "kind cluster that receives the locally built image."
+variable "argocd_namespace" {
+  description = "Namespace where Argo CD runs."
   type        = string
 }
 
-variable "source_dir" {
-  description = "Directory with the application Dockerfile."
+variable "repo_url" {
+  description = "Git repository Argo CD syncs the application chart from."
+  type        = string
+}
+
+variable "target_revision" {
+  description = "Branch, tag or commit Argo CD tracks."
+  type        = string
+  default     = "main"
+}
+
+variable "chart_path" {
+  description = "Path of the application chart inside the repository."
+  type        = string
+  default     = "terraform/modules/sample-app/chart"
+}
+
+variable "argocd_apps_chart_version" {
+  description = "argo/argocd-apps Helm chart version."
   type        = string
 }
 
@@ -24,9 +41,14 @@ variable "ingress_namespace" {
   type        = string
 }
 
-variable "ingress_gateway_selector" {
-  description = "Labels selecting the Istio ingress gateway pods."
-  type        = map(string)
+variable "ingress_gateway" {
+  description = "Shared Istio Gateway (<namespace>/<name>) the application attaches to."
+  type        = string
+}
+
+variable "ingress_host" {
+  description = "Hostname the application is published at."
+  type        = string
 }
 
 variable "otlp_endpoint" {

@@ -3,7 +3,7 @@ output "namespace" {
   value       = kubernetes_namespace_v1.this.metadata[0].name
 }
 
-output "image" {
-  description = "Image deployed to the cluster."
-  value       = local.image
+output "argocd_application" {
+  description = "Argo CD Application that delivers the sample app."
+  value       = "${var.argocd_namespace}/sample-app"
 }

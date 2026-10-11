@@ -13,12 +13,25 @@ x-credentials: &credentials
 services:
   s3:
     image: versity/versitygw:v1.8.0
-    command: ["--port", ":7070", "posix", "--versioning-dir", "/versions", "/buckets"]
+    command:
+      - --port=:7070
+      # Admin WebUI (http://localhost:7071) to browse the state and its
+      # versions. It runs in the browser and calls the S3 API directly, hence
+      # the gateway URL and the CORS origin. Local only: in production nobody
+      # gets a console with write access to the state bucket.
+      - --webui=:7071
+      - --webui-no-tls
+      - --webui-gateways=http://localhost:7070
+      - --cors-allow-origin=http://localhost:7071
+      - posix
+      - --versioning-dir=/versions
+      - /buckets
     environment:
       ROOT_ACCESS_KEY: ${TFSTATE_ACCESS_KEY:-tfstate-local}
       ROOT_SECRET_KEY: ${TFSTATE_SECRET_KEY:-tfstate-local-secret}
     ports:
       - "127.0.0.1:7070:7070"
+      - "127.0.0.1:7071:7071"
     volumes:
       - buckets:/buckets
       - versions:/versions
@@ -35,7 +48,7 @@ services:
       - |
         s3="aws --endpoint-url http://s3:7070 s3api"
         for _ in $$(seq 1 30); do $$s3 list-buckets >/dev/null 2>&1 && break; sleep 1; done
-        $$s3 head-bucket --bucket tfstate 2>/dev/null || $$s3 create-bucket --bucket tfstate >/dev/null
+        $$s3 head-bucket --bucket tfstate >/dev/null 2>&1 || $$s3 create-bucket --bucket tfstate >/dev/null
         $$s3 put-bucket-versioning --bucket tfstate --versioning-configuration Status=Enabled
         echo "bucket tfstate ready"
 

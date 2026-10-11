@@ -53,6 +53,7 @@ flowchart TB
             direction LR
             alloy["Alloy<br/>/var/log/pods"] --> loki[Loki]
             tempo[Tempo] -->|service graph| prom[Prometheus]
+            tempo -->|blocos| tstore[("trace-store<br/>S3 no cluster")]
             prom --> am[Alertmanager]
             am --> sink[alert-sink]
             graf[Grafana]
@@ -77,7 +78,7 @@ flowchart TB
 |----------|-----------------------------------------|-------------------------------|---------------|---------------------------------------------|
 | Métricas | app (`prometheus_client`), Envoy, cluster | PodMonitor / ServiceMonitor | Prometheus    | exemplars → trace                           |
 | Logs     | stdout JSON com `trace_id`              | Grafana Alloy (arquivos do nó)| Loki          | `trace_id` → trace                          |
-| Traces   | OpenTelemetry SDK + sidecars Envoy      | OTLP/gRPC                     | Tempo         | trace → logs, trace → métricas, service map, TraceQL metrics |
+| Traces   | OpenTelemetry SDK + sidecars Envoy      | OTLP/gRPC                     | Tempo (blocos em S3 no cluster) | trace → logs, trace → métricas, service map, TraceQL metrics |
 
 **Ordem de provisionamento** (dependências declaradas no Terraform):
 
@@ -217,7 +218,7 @@ Security
 |-----------|---------------|
 | Cluster local via Terraform, 1 CP + 2 workers | `modules/kind-cluster`: Kubernetes 1.33, subnets de pod/service explícitas, kube-proxy iptables, workers em 2 "zonas" |
 | Rede entre nós | kindnet (CNI com suporte a NetworkPolicy) |
-| Volumes persistentes | StorageClass `standard` (local-path); PVCs para Prometheus, Alertmanager, Grafana, Loki e Tempo |
+| Volumes persistentes | StorageClass `standard` (local-path); PVCs para Prometheus, Alertmanager, Grafana, Loki, Tempo (WAL) e o object storage dos traces |
 | Prometheus | kube-prometheus-stack, incluindo métricas de etcd, scheduler, controller-manager e kube-proxy |
 | Loki | modo single binary, schema v13/TSDB, retenção configurável |
 | Loki: coleta | Alloy lendo os arquivos de log de todos os nós (inclusive control plane), sem root |
@@ -363,7 +364,7 @@ Para mudar o peso do canary, altere `canary_weight` em `terraform.tfvars` e rode
     ├── environments/local/      # terraform.tfvars + backend.hcl
     └── modules/
         ├── kind-cluster/        # cluster kind
-        ├── observability/       # Prometheus, Alertmanager, Grafana, Loki, Tempo, Alloy
+        ├── observability/       # Prometheus, Alertmanager, Grafana, Loki, Tempo (+ S3 para os traces), Alloy
         │   ├── values/          # values dos charts (templates)
         │   └── dashboards/      # dashboards Grafana (JSON)
         ├── service-mesh/        # Istio + chart local com mTLS, tracing e monitors

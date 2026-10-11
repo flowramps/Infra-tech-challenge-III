@@ -65,7 +65,7 @@ cluster ──► observability ──► service_mesh ──► sample_app
 
 - **kube-prometheus-stack** entrega Prometheus, Alertmanager, Grafana, node-exporter, kube-state-metrics e regras padrão da comunidade.
 - **Alloy** em vez de Promtail (em fim de vida), como DaemonSet que lê os arquivos de log do nó (`/var/log/pods`). Detalhes na seção 14.
-- **Loki e Tempo em modo single binary com filesystem + PVC.** O modo distribuído com object storage é o caminho para produção, mas multiplicaria os pods sem agregar valor localmente.
+- **Loki e Tempo em modo single binary.** O modo distribuído é o caminho para produção, mas multiplicaria os pods sem agregar valor localmente. O Loki usa filesystem + PVC; o Tempo usa **object storage** (seção 16).
 - **Correlação entre os três sinais:**
   - métrica → trace: *exemplars* no histograma de latência;
   - log → trace: `trace_id` no log JSON + derived field no datasource Loki;
@@ -205,3 +205,17 @@ Três perguntas, três comportamentos:
 **Por que não instalar automaticamente.** Instalar exige `sudo` ou executar binários baixados. Escondido num comando de deploy, isso tira o controle de quem roda, varia por sistema operacional e é um vetor de supply chain. Com o opt-in, a instalação é explícita, reproduzível (versões fixadas) e verificada (checksum).
 
 **Trade-offs.** O Docker continua manual, porque é instalação de sistema. A verificação usa o checksum publicado no mesmo servidor do binário; assinaturas (GPG da HashiCorp, cosign) seriam a próxima camada.
+
+## 16. Tempo em object storage
+
+**Contexto.** Com o backend `local` (filesystem), traces com mais de alguns minutos deixavam de ser encontrados. O Tempo 2.9 lista os blocos percorrendo os diretórios enquanto a retenção apaga blocos já compactados; um bloco removido no meio da listagem faz a listagem inteira falhar (`failed listing tenant blocks: open <bloco>: no such file or directory`). O índice de blocos para de ser atualizado e só os traces ainda em memória continuam visíveis. A correção (grafana/tempo#7712) ainda não foi lançada.
+
+**Decisão.** Gravar os blocos num object storage S3-compatível **dentro do cluster** (Versity S3 Gateway sobre um PersistentVolume), que é como o Tempo roda em produção. Listagens de objetos não sofrem essa corrida.
+
+- Credenciais geradas pelo Terraform (`random_password`), entregues num Secret e lidas pelo Tempo por variável de ambiente (`-config.expand-env`); nada em values.
+- O gateway roda sem root, com sistema de arquivos somente leitura e o bucket criado como diretório antes de subir.
+- Blocos cortados a cada 5 min (`max_block_duration`): chegam rápido ao storage e o ingester segura menos memória.
+- `make verify` confere que a listagem de blocos não registrou erros nos últimos 15 min.
+- **Memória:** com 1 GiB o Tempo já operava no limite (picos de ~1.020 MiB) e foi morto por falta de memória (OOMKilled) ao ler blocos de volta. Limite de 2 GiB, `GOMEMLIMIT=1600MiB` (o coletor de lixo do Go trabalha antes do limite do cgroup) e o antigo *memory ballast* desligado. Pico medido depois do ajuste: 913 MiB, sem reinícios.
+
+**Trade-offs.** Mais um componente para operar. Em produção, o storage seria gerenciado (S3/GCS) e acessado por role (IRSA/Workload Identity), sem chave fixa.

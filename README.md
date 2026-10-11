@@ -197,6 +197,7 @@ Logs
 Traces
   PASS Traces for frontend in Tempo
   PASS TraceQL metrics (Grafana Traces Drilldown)
+  PASS Tempo block index healthy (no blocklist poll errors in 15m)
 Alerting
   PASS Watchdog alert reaching Alertmanager
 Security
@@ -220,7 +221,7 @@ Security
 | Prometheus | kube-prometheus-stack, incluindo métricas de etcd, scheduler, controller-manager e kube-proxy |
 | Loki | modo single binary, schema v13/TSDB, retenção configurável |
 | Loki: coleta | Alloy lendo os arquivos de log de todos os nós (inclusive control plane), sem root |
-| Tempo | OTLP gRPC/HTTP, metrics-generator (service graph, span metrics e TraceQL metrics) |
+| Tempo | OTLP gRPC/HTTP, metrics-generator (service graph, span metrics e TraceQL metrics); blocos em object storage S3 dentro do cluster |
 | Grafana | datasources pré-configurados e correlacionados; 4 dashboards próprios + dashboards da comunidade |
 | App de microsserviços | `frontend → orders → inventory` emitindo métricas, logs e traces |
 
@@ -383,7 +384,7 @@ Para mudar o peso do canary, altere `canary_weight` em `terraform.tfvars` e rode
 
 ## Limitações conhecidas
 
-- Os backends de observabilidade rodam com 1 réplica e filesystem local. Em produção: modos distribuídos com object storage (S3/GCS).
+- Os backends de observabilidade rodam com 1 réplica. O Tempo já grava em object storage (S3 local no cluster); o Loki usa filesystem. Em produção: modos distribuídos com object storage gerenciado (S3/GCS).
 - O state local não tem locking. Em equipe: S3 com `use_lockfile` ou DynamoDB.
 - O state local usa access key fixa porque o backend local não tem IAM/STS. **Em produção: roles com o mínimo privilégio e credenciais temporárias** (SSO para pessoas, OIDC para o pipeline, IRSA/Pod Identity para workloads), nunca usuários técnicos com access keys. Ver [decisões, seção 2](docs/decisions.md#2-remote-state-em-s3-local-versity-s3-gateway).
 - O custo é uma estimativa por requests com preço de referência, não a fatura de um provedor.

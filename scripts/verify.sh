@@ -96,6 +96,10 @@ check "TraceQL metrics (Grafana Traces Drilldown)" bash -c \
     --data-urlencode start=\$(( \$(date +%s) - 300 )) --data-urlencode end=\$(date +%s) --data-urlencode step=60s |
     python3 -c \"import json,sys; sys.exit(0 if json.load(sys.stdin).get('series') else 1)\""
 
+check "Tempo block index healthy (no blocklist poll errors in 15m)" bash -c \
+  "curl -sf '$PROMETHEUS/api/v1/query' --data-urlencode 'query=sum(increase(tempodb_blocklist_poll_errors_total[15m])) or vector(0)' |
+    python3 -c \"import json,sys; r=json.load(sys.stdin)['data']['result']; sys.exit(0 if r and float(r[0]['value'][1]) == 0 else 1)\""
+
 echo "Alerting"
 check "Watchdog alert reaching Alertmanager" bash -c \
   "curl -sf '$ALERTMANAGER/api/v2/alerts?filter=alertname%3D%22Watchdog%22' | grep -q Watchdog"

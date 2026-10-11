@@ -26,6 +26,7 @@ Cada decisão segue o formato: **contexto → decisão → trade-off**.
 - O state precisa sobreviver ao cluster; por isso o backend não roda dentro do kind.
 - Versity é Apache-2.0, um único binário que expõe um diretório como S3. As imagens públicas do MinIO deixaram de ser distribuídas, e o SeaweedFS 4.x exige configuração de IAM/STS desproporcional para este uso.
 - O backend é declarado vazio (`backend "s3" {}`) e configurado por ambiente em `environments/<env>/backend.hcl` (partial configuration).
+- WebUI de administração do gateway em `http://localhost:7071` (só loopback), para inspecionar o state e suas versões. Em produção ninguém teria console com escrita no bucket de state; o acesso de leitura para auditoria seria por role.
 
 **Trade-offs.** Sem state locking (single user local). Em ambiente compartilhado: S3 com `use_lockfile` (Terraform ≥ 1.10) ou DynamoDB. As credenciais do backend são locais, vinculadas a `127.0.0.1`, e podem ser sobrescritas por `TFSTATE_ACCESS_KEY`/`TFSTATE_SECRET_KEY`.
 

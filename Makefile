@@ -81,10 +81,12 @@ info: ## Print the UI addresses and credentials
 	@echo "UIs (through the Istio ingress gateway):"
 	@terraform -chdir=$(TF_DIR) output -json urls | \
 	  python3 -c 'import json,sys; [print(f"  {k:<13} {v}") for k,v in sorted(json.load(sys.stdin).items())]'
+	@echo "  tfstate       http://localhost:7071 (Terraform state backend, outside the cluster)"
 	@echo "Credentials:"
 	@echo "  grafana       admin / $$(terraform -chdir=$(TF_DIR) output -raw grafana_admin_password)"
 	@echo "  argocd        admin / $$(kubectl --context $$(terraform -chdir=$(TF_DIR) output -raw kubeconfig_context) \
 	  -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)"
+	@echo "  tfstate       $(AWS_ACCESS_KEY_ID) / $(AWS_SECRET_ACCESS_KEY)"
 
 .PHONY: verify
 verify: ## Smoke test: app, metrics, logs, traces and mesh

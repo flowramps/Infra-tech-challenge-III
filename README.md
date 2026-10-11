@@ -111,6 +111,14 @@ Tudo é publicado por uma **entrada única**: o Istio Ingress Gateway na porta 8
 | Prometheus   | http://prometheus.localhost  |                   |
 | Alertmanager | http://alertmanager.localhost |                  |
 
+O backend do Terraform state roda **fora do cluster**, de propósito (o state precisa sobreviver a ele), e tem a própria UI:
+
+| Serviço | URL | Login |
+|---|---|---|
+| Terraform state (Versity S3 Gateway) | http://localhost:7071 | access key / secret em `make info` |
+
+Nela dá para ver o bucket `tfstate` e o **histórico de versões do state**, uma por `apply`.
+
 Qualquer `*.localhost` resolve para 127.0.0.1 sem consultar DNS (RFC 6761), tanto no browser quanto no sistema. Onde isso não funcionar, use `ingress_domain = "127.0.0.1.nip.io"` no `terraform.tfvars` (DNS público). Para usar outra porta, altere `ingress_host_port`.
 
 `make up` executa:

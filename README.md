@@ -38,17 +38,23 @@ flowchart LR
             end
 
             subgraph mon[monitoring]
-                prom[Prometheus] --> am[Alertmanager] --> sink[alert-sink]
-                alloy[Alloy DaemonSet] --> loki[Loki]
+                prom[Prometheus] --> am[Alertmanager] --> sink[alert-sink<br/>todos os alertas]
+                alloy[Alloy DaemonSet<br/>lê /var/log/pods] --> loki[Loki]
                 tempo[Tempo] -->|remote write<br/>service graph| prom
                 graf[Grafana]
             end
+
+            argocd[Argo CD]
         end
     end
 
     gw --> fe
+    gw -.->|grafana / prometheus /<br/>alertmanager / argocd .localhost| graf & argocd
+    am -->|critical| tg([Telegram])
+    argocd -->|pull| gh[(GitHub)]
+    argocd -->|sync| app
     app -.->|metrics :9464 / Envoy :15090| prom
-    app -.->|logs stdout| alloy
+    app -.->|logs| alloy
     app -.->|traces OTLP app + Envoy| tempo
     graf --> prom & loki & tempo
 ```
@@ -58,8 +64,8 @@ flowchart LR
 | Sinal    | Origem                                  | Coleta                        | Armazenamento | Correlação no Grafana                       |
 |----------|-----------------------------------------|-------------------------------|---------------|---------------------------------------------|
 | Métricas | app (`prometheus_client`), Envoy, cluster | PodMonitor / ServiceMonitor | Prometheus    | exemplars → trace                           |
-| Logs     | stdout JSON com `trace_id`              | Grafana Alloy                 | Loki          | `trace_id` → trace                          |
-| Traces   | OpenTelemetry SDK + sidecars Envoy      | OTLP/gRPC                     | Tempo         | trace → logs, trace → métricas, service map |
+| Logs     | stdout JSON com `trace_id`              | Grafana Alloy (arquivos do nó)| Loki          | `trace_id` → trace                          |
+| Traces   | OpenTelemetry SDK + sidecars Envoy      | OTLP/gRPC                     | Tempo         | trace → logs, trace → métricas, service map, TraceQL metrics |
 
 **Ordem de provisionamento** (dependências declaradas no Terraform):
 
@@ -81,8 +87,9 @@ Terraform é dono da **plataforma** (cluster, observabilidade, mesh, Argo CD) e 
 | Terraform  | ≥ 1.5          |
 | kubectl    | 1.33           |
 | helm       | 3.x / 4.x      |
+| curl, python3 | usados pelo `Makefile` e pelo `make verify` |
 
-Recursos: ~6 GB de RAM livres, 4 CPUs e a porta 80 livre no host.
+Recursos: ~8 GB de RAM livres (o ambiente completo usa ~6,5 GB), 4 CPUs, acesso à internet (GitHub e GHCR) e as portas 80, 7070 e 7071 livres no host.
 
 **Linux:** o kind multi-nó precisa de limites maiores de `inotify` (o `make preflight` verifica):
 
@@ -95,7 +102,7 @@ sudo sysctl -w fs.inotify.max_user_watches=524288 fs.inotify.max_user_instances=
 ```bash
 make up        # state backend + cluster + observabilidade + mesh + app (~10 min)
 make verify    # testes end-to-end de toda a plataforma
-make info      # URLs prontas e credenciais (Grafana e Argo CD)
+make info      # URLs prontas e credenciais (Grafana, Argo CD e state)
 make down      # destrói o cluster (mantém o state)
 make clean     # remove o backend de state
 make help      # todos os comandos
@@ -180,13 +187,14 @@ Security
 
 | Requisito | Implementação |
 |-----------|---------------|
-| Cluster local via Terraform, 1 CP + 2 workers | `modules/kind-cluster`: subnets de pod/service explícitas, kube-proxy iptables, workers em 2 "zonas" |
+| Cluster local via Terraform, 1 CP + 2 workers | `modules/kind-cluster`: Kubernetes 1.33, subnets de pod/service explícitas, kube-proxy iptables, workers em 2 "zonas" |
 | Rede entre nós | kindnet (CNI com suporte a NetworkPolicy) |
 | Volumes persistentes | StorageClass `standard` (local-path); PVCs para Prometheus, Alertmanager, Grafana, Loki e Tempo |
 | Prometheus | kube-prometheus-stack, incluindo métricas de etcd, scheduler, controller-manager e kube-proxy |
 | Loki | modo single binary, schema v13/TSDB, retenção configurável |
-| Tempo | OTLP gRPC/HTTP, metrics-generator (service graph + span metrics) |
-| Grafana | datasources pré-configurados e correlacionados; 3 dashboards próprios + dashboards da comunidade |
+| Loki: coleta | Alloy lendo os arquivos de log de todos os nós (inclusive control plane), sem root |
+| Tempo | OTLP gRPC/HTTP, metrics-generator (service graph, span metrics e TraceQL metrics) |
+| Grafana | datasources pré-configurados e correlacionados; 4 dashboards próprios + dashboards da comunidade |
 | App de microsserviços | `frontend → orders → inventory` emitindo métricas, logs e traces |
 
 ### Componentes adicionais
@@ -195,17 +203,19 @@ Security
 |------|---------------|
 | RBAC | Role `sample-app-developer` para o grupo `sample-app-developers` (pode escalar, não lê Secrets) |
 | Network policies | default-deny + allow por chamador + allow de scrape vindo de `monitoring` |
-| Secrets | senha do Grafana gerada pelo Terraform e entregue via Secret (`existingSecret`) |
+| Secrets | senha do Grafana gerada pelo Terraform (`existingSecret`); token do Telegram via `.env` → Secret montado como arquivo |
+| Containers sem root | todos os containers de longa duração, inclusive de terceiros; agente de logs sem nenhuma capability |
 | PDB | serviços da app, istiod e ingress gateway |
 | Requests/limits | todos os workloads, inclusive charts de terceiros e sidecars |
 | Probes | readiness/liveness em todos os serviços da app |
 | HPA | todos os Deployments da app, por CPU do container `app` (`ContainerResource`) |
-| AlertManager | roteamento, inibição e webhook (`alert-sink`, visível no Loki) |
-| Dashboards | *Sample App - RED & SLO*, *Service Mesh - Istio*, *Cluster Health & Cost* |
+| AlertManager | agrupamento, inibição e roteamento por severidade: tudo para o webhook (`alert-sink`, visível no Loki) e `critical` também para o Telegram (opcional) |
+| Dashboards | *Sample App - RED & SLO*, *Service Mesh - Istio*, *Cluster Health & Cost*, *GitOps - Argo CD* |
 | SLO/SLI | recording rules + alertas multi-window multi-burn-rate (99,5% disponibilidade, 99% < 500 ms) |
 | Custo | custo mensal estimado por namespace, custo ocioso e eficiência requests × uso |
-| Módulos Terraform | 4 módulos com interfaces explícitas |
-| Remote state | backend S3 local versionado (Versity S3 Gateway) |
+| Módulos Terraform | 5 módulos com interfaces explícitas (`kind-cluster`, `observability`, `service-mesh`, `gitops`, `sample-app`) |
+| Remote state | backend S3 local versionado (Versity S3 Gateway), com WebUI para o histórico de versões |
+| Ingress | entrada única (porta 80) com roteamento por hostname para a app e todas as UIs |
 | Variáveis por ambiente | `environments/<env>/terraform.tfvars` + `backend.hcl` |
 | Service mesh | Istio 1.30 (sidecar) |
 | mTLS | `PeerAuthentication` STRICT mesh-wide |
@@ -274,13 +284,19 @@ Depois do `make up`, abra o Grafana. A pasta **Tech Challenge** tem quatro dashb
 4. **GitOps - Argo CD**
    - Estado de sync/health das aplicações, operações de sync e latência do Git.
 
+Para explorar uma requisição pelos três sinais, no Grafana → **Explore**:
+- **Tempo** (TraceQL): `{ resource.service.name = "inventory" && status = error }` mostra a falha do inventory seguida do retry com sucesso. Em cada span, *Logs for this span* abre os logs.
+- **Loki**: `{namespace="sample-app", app="inventory"} |= "injected fault"`. Cada linha tem o link *View trace*.
+- **Traces Drilldown** (menu *Drilldown → Traces*): taxa, erros e latência calculados direto dos traces. Com o filtro *Root spans* os erros não aparecem, porque o retry os absorve; com *All spans* aparecem no inventory.
+
 Para ver os alertas de SLO disparando:
 
 ```bash
 make chaos       # inventory passa a falhar 50% (Terraform -> Application -> Argo CD, sem drift)
-# Alertmanager em ~5 min; notificações no Loki: {namespace="monitoring", app="alert-sink"}
 make chaos-off   # restaura o valor do tfvars
 ```
+
+O alerta *warning* (`AvailabilitySLOSlowBurn`) dispara em poucos minutos. O *critical* (`AvailabilitySLOFastBurn`) leva ~10-12 min, porque exige que o erro da última hora passe de 14,4× o budget. As notificações aparecem no Loki (`{namespace="monitoring", app="alert-sink"}`) e, para o critical, no Telegram. Depois do `chaos-off` chega a notificação de resolvido.
 
 ### Alertas no Telegram (opcional)
 
@@ -307,6 +323,8 @@ Para mudar o peso do canary, altere `canary_weight` em `terraform.tfvars` e rode
 ```
 .
 ├── .github/workflows/           # ci, security e cd
+├── .env.example                 # segredos opcionais (Telegram); copiar para .env
+├── .trivyignore                 # aceite de risco do Trivy (com justificativa e prazo)
 ├── Makefile                     # ponto de entrada único
 ├── app/                         # microsserviço instrumentado (FastAPI + OpenTelemetry)
 ├── bootstrap/                   # S3 local para o Terraform state (Docker Compose)
